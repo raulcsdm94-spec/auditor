@@ -1,0 +1,30 @@
+{
+  "name": "website-auditor",
+  "version": "0.1.0",
+  "description": "Auditoria passiva de segurança e conformidade legal de websites (PME PT/ES)",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "dist/cli.js",
+  "bin": {
+    "website-auditor": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "audit": "ts-node src/cli.ts",
+    "audit:prod": "node dist/cli.js",
+    "drafts": "ts-node src/make-drafts.ts",
+    "send": "ts-node src/send.ts",
+    "automail": "ts-node src/auto-mail.ts",
+    "postinstall": "playwright install chromium",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "playwright": "^1.47.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}

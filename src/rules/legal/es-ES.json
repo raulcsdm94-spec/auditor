@@ -1,0 +1,100 @@
+{
+  "country": "es-ES",
+  "language": "Español (España)",
+  "patterns": {
+    "livroReclamacoes": [
+      "hoja de reclamaciones",
+      "hojas de reclamaciones",
+      "libro de reclamaciones",
+      "reclamaciones"
+    ],
+    "politicaPrivacidade": [
+      "política de privacidad",
+      "politica de privacidad",
+      "privacy policy",
+      "protección de datos",
+      "proteccion de datos",
+      "rgpd",
+      "lopdgdd"
+    ],
+    "politicaCookies": [
+      "política de cookies",
+      "politica de cookies",
+      "cookie policy",
+      "uso de cookies"
+    ],
+    "bannerCookies": [
+      "este sitio utiliza cookies",
+      "utilizamos cookies",
+      "usamos cookies",
+      "aceptar cookies",
+      "aceptar todas",
+      "gestionar cookies",
+      "consentimiento de cookies",
+      "we use cookies"
+    ],
+    "rejeitarCookies": [
+      "rechazar",
+      "rechazar todas",
+      "denegar",
+      "solo esenciales",
+      "sólo esenciales",
+      "configurar",
+      "reject",
+      "decline"
+    ],
+    "infoEmpresa": [
+      "aviso legal",
+      "domicilio social",
+      "razón social",
+      "razon social",
+      "datos de la empresa",
+      "registro mercantil",
+      "inscrita en el registro"
+    ],
+    "identificadorFiscal": [
+      "cif",
+      "nif",
+      "número de identificación fiscal",
+      "numero de identificacion fiscal"
+    ],
+    "direitoRetratacao": [
+      "derecho de desistimiento",
+      "14 días",
+      "14 dias",
+      "catorce días",
+      "plazo de desistimiento",
+      "devolución del producto"
+    ],
+    "politicaReembolso": [
+      "política de devoluciones",
+      "politica de devoluciones",
+      "política de reembolso",
+      "politica de reembolso",
+      "devoluciones",
+      "reembolso",
+      "cambios y devoluciones"
+    ],
+    "termosCancelamento": [
+      "política de cancelación",
+      "politica de cancelacion",
+      "condiciones de cancelación",
+      "condiciones de cancelacion",
+      "cancelación de la reserva",
+      "cancelación gratuita",
+      "no reembolsable"
+    ]
+  },
+  "remediacao": {
+    "livroReclamacoes": "Informar de la disponibilidad de hojas de reclamaciones oficiales (obligatorio para la mayoría de establecimientos en España, según normativa autonómica).",
+    "politicaPrivacidade": "Publicar una Política de Privacidad conforme al RGPD y a la LOPDGDD (LO 3/2018).",
+    "politicaCookies": "Publicar una Política de Cookies que describa las cookies utilizadas y sus finalidades (guía AEPD).",
+    "bannerCookies": "Mostrar un banner de consentimiento de cookies antes de instalar cookies no esenciales.",
+    "rejeitarCookies": "El banner debe permitir rechazar las cookies no esenciales con la misma facilidad que aceptarlas (criterio AEPD).",
+    "infoEmpresa": "Incluir el Aviso Legal con la identificación del prestador (razón social, domicilio, contacto), conforme a la LSSI-CE (Ley 34/2002).",
+    "identificadorFiscal": "Indicar el CIF/NIF de la entidad en el Aviso Legal.",
+    "direitoRetratacao": "Informar del derecho de desistimiento de 14 días en ventas a distancia (RDL 1/2007, TRLGDCU).",
+    "politicaReembolso": "Disponer de una política de devoluciones/reembolsos clara y accesible.",
+    "termosCancelamento": "Mostrar las condiciones de cancelación de forma clara antes de la confirmación del pago."
+  }
+}

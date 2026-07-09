@@ -1,0 +1,111 @@
+{
+  "country": "pt-PT",
+  "language": "Português (Portugal)",
+  "patterns": {
+    "livroReclamacoes": [
+      "livro de reclamações",
+      "livro de reclamacoes",
+      "livroreclamacoes.pt",
+      "livro-de-reclamacoes",
+      "reclamacoes eletronico",
+      "reclamações eletrónico"
+    ],
+    "politicaPrivacidade": [
+      "política de privacidade",
+      "politica de privacidade",
+      "privacy policy",
+      "proteção de dados",
+      "protecao de dados",
+      "rgpd"
+    ],
+    "politicaCookies": [
+      "política de cookies",
+      "politica de cookies",
+      "cookie policy",
+      "uso de cookies"
+    ],
+    "bannerCookies": [
+      "este site utiliza cookies",
+      "utilizamos cookies",
+      "usamos cookies",
+      "aceitar cookies",
+      "aceitar todos",
+      "gerir cookies",
+      "consentimento de cookies",
+      "we use cookies"
+    ],
+    "rejeitarCookies": [
+      "rejeitar",
+      "recusar",
+      "rejeitar todos",
+      "recusar todos",
+      "apenas essenciais",
+      "só essenciais",
+      "so essenciais",
+      "reject",
+      "decline"
+    ],
+    "infoEmpresa": [
+      "sede",
+      "morada",
+      "contribuinte",
+      "número de contribuinte",
+      "numero de contribuinte",
+      "registo comercial",
+      "conservatória",
+      "capital social"
+    ],
+    "identificadorFiscal": [
+      "nipc",
+      "nif",
+      "número de identificação de pessoa coletiva",
+      "numero de identificacao de pessoa coletiva",
+      "número de identificação fiscal",
+      "numero de identificacao fiscal"
+    ],
+    "direitoRetratacao": [
+      "direito de livre resolução",
+      "direito de livre resolucao",
+      "direito de retratação",
+      "direito de retratacao",
+      "14 dias",
+      "catorze dias",
+      "período de reflexão",
+      "livre resolução do contrato"
+    ],
+    "politicaReembolso": [
+      "política de devolução",
+      "politica de devolucao",
+      "política de reembolso",
+      "politica de reembolso",
+      "devoluções",
+      "devolucoes",
+      "reembolso",
+      "cancelamento de encomenda",
+      "trocas e devoluções"
+    ],
+    "termosCancelamento": [
+      "política de cancelamento",
+      "politica de cancelamento",
+      "termos de cancelamento",
+      "condições de cancelamento",
+      "condicoes de cancelamento",
+      "cancelamento da reserva",
+      "cancelamento gratuito",
+      "não reembolsável",
+      "nao reembolsavel"
+    ]
+  },
+  "remediacao": {
+    "livroReclamacoes": "Incluir link/widget para o Livro de Reclamações Eletrónico (https://www.livroreclamacoes.pt), obrigatório para prestadores de serviços (DL 74/2017).",
+    "politicaPrivacidade": "Publicar uma Política de Privacidade conforme o RGPD e a Lei 58/2019.",
+    "politicaCookies": "Publicar uma Política de Cookies que descreva os cookies utilizados e as suas finalidades.",
+    "bannerCookies": "Apresentar um banner de consentimento de cookies antes de definir cookies não essenciais.",
+    "rejeitarCookies": "O banner deve permitir rejeitar cookies não essenciais com a mesma facilidade com que permite aceitar (CNPD).",
+    "infoEmpresa": "Apresentar a identificação completa da empresa (nome legal, sede, contactos) de forma visível, nos termos do DL 7/2004 (comércio eletrónico).",
+    "identificadorFiscal": "Indicar o NIPC/NIF da entidade, exigido na informação obrigatória de prestadores.",
+    "direitoRetratacao": "Informar sobre o direito de livre resolução de 14 dias nas vendas à distância (DL 24/2014).",
+    "politicaReembolso": "Disponibilizar política de devoluções/reembolsos clara e acessível.",
+    "termosCancelamento": "Apresentar os termos de cancelamento de forma clara antes da confirmação do pagamento."
+  }
+}
