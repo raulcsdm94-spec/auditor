@@ -1,4 +1,6 @@
 import { CrawlResult, Finding } from "../types";
+import { semTravessoes } from "./client-report";
+import { detetarPerfilNegocio, PerfilNegocio } from "./business-profile";
 
 /**
  * Gera um email de outreach PERSONALIZADO (para copiar e colar), com base no
@@ -118,5 +120,5 @@ export function gerarEmailOutreach(crawl: CrawlResult, findings: Finding[]): str
     "Com os melhores cumprimentos,",
   ].join("\n");
 
-  return [`Assunto: ${assunto}`, "", corpo, ""].join("\n");
+  return semTravessoes([`Assunto: ${assunto}`, "", corpo, ""].join("\n"));
 }
