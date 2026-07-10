@@ -38,6 +38,7 @@ export interface ResumoSite {
   dir?: string;
   clientePdf?: string;
   emailPath?: string;
+  emailColdCallPath?: string;
   erro?: string;
 }
 
@@ -89,6 +90,7 @@ export async function auditarSite(inputUrl: string, o: OpcoesAuditoria): Promise
       dir: anyMd ? path.dirname(anyMd) : undefined,
       clientePdf: rel.clientePdfPath,
       emailPath: rel.emailPath,
+      emailColdCallPath: rel.emailColdCallPath,
     };
   } catch (err) {
     return {

@@ -28,6 +28,7 @@ interface SendOpts {
   maxPerDay: string;
   delayMs: string;
   limit?: string;
+  strategy: string;
 }
 
 interface SentLogEntry {
@@ -96,8 +97,16 @@ async function main() {
     .option("--max-per-day <n>", "limite de envios por dia", "30")
     .option("--delay-ms <n>", "pausa entre envios em ms", "4000")
     .option("--limit <n>", "processa no máximo N leads elegíveis nesta corrida (útil para testar)")
+    .option("--strategy <tipo>", "estratégia de email: 'classico' (com relatório) ou 'coldcall' (sem anexo)", "classico")
     .parse(process.argv);
   const opts = program.opts<SendOpts>();
+
+  const strategy = (opts.strategy || "classico").toLowerCase();
+  if (strategy !== "classico" && strategy !== "coldcall") {
+    console.error("✖ --strategy deve ser 'classico' ou 'coldcall'.");
+    process.exitCode = 3;
+    return;
+  }
 
   const outDir = path.resolve(process.cwd(), opts.out);
   const resumoPath = path.join(outDir, "_resumo-auditorias.csv");
@@ -132,8 +141,18 @@ async function main() {
   const iUrl = col("url");
   const iEmail = col("email");
   const iPdf = col("relatorio_cliente_pdf");
-  const iEmailFile = col("email_outreach");
+  const iEmailFile = strategy === "coldcall" ? col("email_coldcall") : col("email_outreach");
   const iEstado = col("estado");
+
+  // Email columns podem não existir em resumos antigos; validar
+  if (iEmailFile === -1) {
+    console.error(
+      `✖ Coluna 'email_${strategy === "coldcall" ? "coldcall" : "outreach"}' não encontrada no CSV. ` +
+        "Corre novamente uma auditoria para gerar o resumo com as novas colunas."
+    );
+    process.exitCode = 3;
+    return;
+  }
 
   let jaEnviados = 0;
   let semEmail = 0;
@@ -157,7 +176,12 @@ async function main() {
       semEmail++;
       continue;
     }
-    if (!pdf || !fs.existsSync(pdf) || !emailFile || !fs.existsSync(emailFile)) {
+    const precisa_pdf = strategy === "classico";
+    if (!emailFile || !fs.existsSync(emailFile)) {
+      semFicheiros++;
+      continue;
+    }
+    if (precisa_pdf && (!pdf || !fs.existsSync(pdf))) {
       semFicheiros++;
       continue;
     }
@@ -180,22 +204,32 @@ async function main() {
     const html = buildEmailHtml(body);
 
     if (!opts.send) {
-      const kb = (fs.statSync(pdf).size / 1024).toFixed(0);
-      console.log(`[dry-run] → ${email} | "${subject}" | anexo: ${path.basename(pdf)} (${kb} KB)`);
+      let infoAnexo = "";
+      if (strategy === "classico") {
+        const kb = (fs.statSync(pdf).size / 1024).toFixed(0);
+        infoAnexo = ` | anexo: ${path.basename(pdf)} (${kb} KB)`;
+      } else {
+        infoAnexo = " | sem anexo (cold call)";
+      }
+      console.log(`[dry-run] → ${email} | "${subject}"${infoAnexo}`);
       wouldSend.push({ url, email, estado: "dry-run", sentAt: "", erro: "" });
       continue;
     }
 
     try {
+      const attachments: { path: string; contentType: string; contentId?: string }[] = [
+        { path: LOGO_PATH, contentType: "image/png", contentId: LOGO_CID },
+      ];
+      if (strategy === "classico") {
+        attachments.unshift({ path: pdf, contentType: "application/pdf" });
+      }
+
       await sendMail(graphCfg!, {
         to: email,
         subject,
         bodyText: body,
         html,
-        attachments: [
-          { path: pdf, contentType: "application/pdf" },
-          { path: LOGO_PATH, contentType: "image/png", contentId: LOGO_CID },
-        ],
+        attachments: attachments as any,
       });
       const sentAt = new Date().toISOString();
       log[id] = { url, email, sentAt };

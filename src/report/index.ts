@@ -3,7 +3,7 @@ import * as path from "path";
 import { Finding, CrawlResult } from "../types";
 import { gerarMarkdown, DadosRelatorio } from "./markdown";
 import { gerarPdf } from "./pdf";
-import { gerarEmailOutreach } from "./email";
+import { gerarEmailOutreach, gerarEmailOutreachColdCall } from "./email";
 
 export interface ResultadoRelatorio {
   /** Relatório interno completo da VERIS (inclui remediação). */
@@ -14,9 +14,12 @@ export interface ResultadoRelatorio {
   clienteMarkdownPath?: string;
   clientePdfPath?: string;
   clienteMarkdown?: string;
-  /** Email de outreach personalizado (texto simples, para copiar e colar). */
+  /** Email de outreach clássico (com relatório anexado, texto simples). */
   emailPath?: string;
   email?: string;
+  /** Email de outreach cold call (sem anexo, bait para responder, texto simples). */
+  emailColdCallPath?: string;
+  emailColdCall?: string;
 }
 
 export interface OpcoesRelatorio {
@@ -132,10 +135,14 @@ export async function gerarRelatorio(opts: OpcoesRelatorio): Promise<ResultadoRe
     }
   }
 
-  // Email de outreach personalizado (sempre gerado, para copiar e colar).
+  // Emails de outreach (ambas as estratégias, sempre gerados para escolher qual usar).
   resultado.email = gerarEmailOutreach(opts.crawl, opts.findings);
   resultado.emailPath = path.join(dir, "email-outreach.txt");
   fs.writeFileSync(resultado.emailPath, resultado.email, "utf-8");
+
+  resultado.emailColdCall = gerarEmailOutreachColdCall(opts.crawl, opts.findings);
+  resultado.emailColdCallPath = path.join(dir, "email-coldcall.txt");
+  fs.writeFileSync(resultado.emailColdCallPath, resultado.emailColdCall, "utf-8");
 
   return resultado;
 }

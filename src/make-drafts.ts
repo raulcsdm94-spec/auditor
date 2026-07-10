@@ -15,6 +15,7 @@ import { ASSINATURA } from "./report/signature";
 
 interface DraftOpts {
   out: string;
+  strategy: "classico" | "coldcall";
 }
 
 /** RFC 2047 para assuntos com acentos. */
@@ -27,11 +28,28 @@ function wrap76(b64: string): string {
   return (b64.match(/.{1,76}/g) || []).join("\r\n");
 }
 
-/** Constrói o conteúdo MIME de um .eml (corpo texto + PDF anexado). */
-function construirEml(to: string, subject: string, body: string, pdfPath: string): string {
+/** Constrói o conteúdo MIME de um .eml (corpo texto + PDF anexado opcionalmente). */
+function construirEml(to: string, subject: string, body: string, pdfPath?: string): string {
   const boundary = "veris_" + Math.random().toString(36).slice(2);
   const corpo = body + "\n\n" + ASSINATURA.join("\n") + "\n";
   const corpoB64 = wrap76(Buffer.from(corpo, "utf-8").toString("base64"));
+
+  if (!pdfPath) {
+    // Sem PDF: simples text/plain
+    return [
+      `To: ${to}`,
+      `Subject: ${encodeSubject(subject)}`,
+      "X-Unsent: 1",
+      "MIME-Version: 1.0",
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      corpoB64,
+      "",
+    ].join("\r\n");
+  }
+
+  // Com PDF: multipart/mixed
   const pdfB64 = wrap76(fs.readFileSync(pdfPath).toString("base64"));
   const pdfName = path.basename(pdfPath);
 
@@ -75,8 +93,16 @@ function main() {
     .name("veris-drafts")
     .description("Gera rascunhos .eml (destinatário + corpo + PDF) a partir das auditorias.")
     .option("--out <dir>", "pasta dos relatórios (onde está o _resumo-auditorias.csv)", "reports")
+    .option("--strategy <tipo>", "estratégia de email: 'classico' (com relatório) ou 'coldcall' (sem anexo)", "classico")
     .parse(process.argv);
-  const opts = program.opts<DraftOpts>();
+  const opts = program.opts<DraftOpts & { strategy: string }>();
+
+  const strategy = (opts.strategy || "classico").toLowerCase();
+  if (strategy !== "classico" && strategy !== "coldcall") {
+    console.error("✖ --strategy deve ser 'classico' ou 'coldcall'.");
+    process.exitCode = 3;
+    return;
+  }
 
   const outDir = path.resolve(process.cwd(), opts.out);
   const resumoPath = path.join(outDir, "_resumo-auditorias.csv");
@@ -92,8 +118,18 @@ function main() {
   const iUrl = col("url");
   const iEmail = col("email");
   const iPdf = col("relatorio_cliente_pdf");
-  const iEmailFile = col("email_outreach");
+  const iEmailFile = strategy === "coldcall" ? col("email_coldcall") : col("email_outreach");
   const iEstado = col("estado");
+
+  // Email outreach pode não existir em resumos antigos; validar
+  if (iEmailFile === -1) {
+    console.error(
+      `✖ Coluna 'email_${strategy === "coldcall" ? "coldcall" : "outreach"}' não encontrada no CSV. ` +
+        "Corre novamente uma auditoria para gerar o resumo com as novas colunas."
+    );
+    process.exitCode = 3;
+    return;
+  }
 
   const outbox = path.join(outDir, "_outbox");
   fs.mkdirSync(outbox, { recursive: true });
@@ -120,21 +156,26 @@ function main() {
     }
 
     const { subject, body } = parseEmailFile(fs.readFileSync(emailFile, "utf-8"));
-    const eml = construirEml(email, subject, body, pdf);
+    const pdfParaAnexar = strategy === "classico" ? pdf : undefined;
+    const eml = construirEml(email, subject, body, pdfParaAnexar);
     fs.writeFileSync(path.join(outbox, `${nomeFicheiro(url)}.eml`), eml, "utf-8");
     feitos++;
   }
 
-  console.log(`✔ ${feitos} rascunho(s) .eml criados em:\n  ${outbox}\n`);
+  const strategyLabel = strategy === "coldcall" ? "cold call (sem PDF)" : "clássico (com PDF)";
+  console.log(`✔ ${feitos} rascunho(s) .eml criados (estratégia: ${strategyLabel}) em:\n  ${outbox}\n`);
   if (semEmail.length) {
     console.log(`  ${semEmail.length} sem email (ignorados): ${semEmail.slice(0, 5).join(", ")}${semEmail.length > 5 ? "…" : ""}`);
   }
   if (semFicheiros.length) {
-    console.log(`  ${semFicheiros.length} sem PDF/email-outreach (ignorados).`);
+    const recurso = strategy === "coldcall" ? "email-coldcall" : "email-outreach";
+    console.log(`  ${semFicheiros.length} sem ${recurso} (ignorados).`);
   }
   console.log(
     "\nComo usar: abre a pasta _outbox e faz duplo-clique em cada .eml.\n" +
-      "O Outlook abre-o já preenchido (destinatário + corpo + PDF anexado). Revê e carrega Enviar."
+      "O Outlook abre-o já preenchido (destinatário + corpo" +
+      (strategy === "classico" ? " + PDF anexado" : "") +
+      "). Revê e carrega Enviar."
   );
 }
 

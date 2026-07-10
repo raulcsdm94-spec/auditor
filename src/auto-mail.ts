@@ -30,6 +30,7 @@ interface AutoOpts {
   maxPerDay?: string;
   delayMs?: string;
   limit?: string;
+  strategy?: string;
 }
 
 /** Encontra o CSV de leads na pasta (ignora os ficheiros gerados com prefixo _). */
@@ -69,6 +70,7 @@ function main() {
     .option("--max-per-day <n>", "limite de envios por dia (passa ao send)")
     .option("--delay-ms <n>", "pausa entre envios em ms (passa ao send)")
     .option("--limit <n>", "processa no máximo N leads (auditoria e envio)")
+    .option("--strategy <tipo>", "estratégia de email: 'classico' (com relatório) ou 'coldcall' (sem anexo)")
     .parse(process.argv);
   const opts = program.opts<AutoOpts>();
 
@@ -154,6 +156,7 @@ function main() {
   if (opts.maxPerDay) sendArgs.push("--max-per-day", opts.maxPerDay);
   if (opts.delayMs) sendArgs.push("--delay-ms", opts.delayMs);
   if (opts.limit) sendArgs.push("--limit", opts.limit);
+  if (opts.strategy) sendArgs.push("--strategy", opts.strategy);
   const codigoSend = correr(TS_NODE, sendArgs);
   process.exitCode = codigoSend;
 }

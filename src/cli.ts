@@ -165,7 +165,7 @@ async function main() {
   const resumoCsvPath = path.join(outBaseDir, "_resumo-auditorias.csv");
   const cabecalho = [
     "url", "url_final", "estado", "criticos", "altos", "medios",
-    "email", "pasta", "relatorio_cliente_pdf", "email_outreach", "erro",
+    "email", "pasta", "relatorio_cliente_pdf", "email_outreach", "email_coldcall", "erro",
   ];
   const linhas = [cabecalho.join(",")];
   resumos.forEach((r, i) => {
@@ -181,6 +181,7 @@ async function main() {
         r.dir || "",
         r.clientePdf || "",
         r.emailPath || "",
+        r.emailColdCallPath || "",
         r.erro || "",
       ]
         .map(csvEscape)

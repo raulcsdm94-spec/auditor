@@ -1,15 +1,114 @@
 import { CrawlResult, Finding } from "../types";
 import { semTravessoes } from "./client-report";
-import { detetarPerfilNegocio, PerfilNegocio } from "./business-profile";
+import { detetarPerfilNegocio } from "./business-profile";
+import { riscoCliente } from "./risco";
 
 /**
- * Gera um email de outreach PERSONALIZADO (para copiar e colar), com base no
- * que a auditoria encontrou. Escreve na mesma pasta do relatório.
- *
- * Estilo: intro da VERIS + pontos em bullets curtos (problema + porquê breve),
- * fáceis de ler. Só factos reais e mensuráveis (segurança, RGPD, tempo de
- * carregamento, servidor). Sem juízos subjetivos (ex. cores/design). Sem em dashes.
+ * Gera emails de outreach PERSONALIZADOS (para copiar e colar).
+ * Duas estratégias: clássica (com relatório) ou cold call (sem anexos).
  */
+
+/** Extrai possível cidade/localização do crawl (address, keywords, etc). Fallback: "sua zona". */
+function extrairLocalizacao(crawl: CrawlResult): string {
+  const texto = (crawl.html + " " + crawl.visibleText).toLowerCase();
+
+  // Procura por endereço em formato comum (Rua, Avenida, etc)
+  const enderecoMatch = texto.match(
+    /(?:rua|avenida|av\.|travessa|largo|praça|alameda|estrada|passagem)\s+([a-záéíóúàâãõç\s]+?),?\s+(?:\d+[a-z]*)?(?:\s*-\s*)?(\d{4}-\d{3}|\d{4}\s*-\s*\d{3})?/i
+  );
+  if (enderecoMatch) {
+    const cp = enderecoMatch[2];
+    if (cp) {
+      const codigoRegiao: Record<string, string> = {
+        "01": "Lisboa",
+        "02": "Porto",
+        "03": "Covilhã",
+        "04": "Castelo Branco",
+        "05": "Guarda",
+        "06": "Leiria",
+        "07": "Aveiro",
+        "08": "Viseu",
+        "09": "Covilhã",
+      };
+      const primeiroDigito = cp.slice(0, 2);
+      if (codigoRegiao[primeiroDigito]) return codigoRegiao[primeiroDigito];
+    }
+  }
+
+  // Procura por palavras-chave geográficas
+  const cidades = [
+    "lisboa",
+    "porto",
+    "covilhã",
+    "braga",
+    "aveiro",
+    "viseu",
+    "guarda",
+    "castelo branco",
+    "leiria",
+    "santarém",
+    "setúbal",
+    "évora",
+    "beja",
+    "faro",
+  ];
+  for (const cidade of cidades) {
+    if (texto.includes(cidade)) return cidade.charAt(0).toUpperCase() + cidade.slice(1);
+  }
+
+  return "sua zona";
+}
+
+/** Extrai categoria de negócio em português amigável (ou "negócios" se desconhecido). */
+function extrairCategoria(crawl: CrawlResult): string {
+  const perfil = detetarPerfilNegocio(crawl);
+  const categoriaMap: Record<string, string> = {
+    alojamento: "alojamentos",
+    restauracao: "restauração",
+    ecommerce: "comércio online",
+    servicos: "serviços",
+    desconhecido: "negócios",
+  };
+  return categoriaMap[perfil.perfil] || "negócios";
+}
+
+/** Top 5 achados mais críticos, ordenados por: legal/fines > security exploits > severity. */
+function top5Findings(findings: Finding[]): Finding[] {
+  const scored = findings
+    .filter((f) => f.severidade !== "info")
+    .map((f) => {
+      let score = 0;
+      // Legal/compliance issues score highest (can lead to fines)
+      if (f.categoria === "legal") score += 1000;
+      if (f.severidade === "critico") score += 100;
+      if (f.severidade === "alto") score += 50;
+      if (f.severidade === "medio") score += 10;
+      // Security exploits
+      if (
+        f.id.includes("tls") ||
+        f.id.includes("login") ||
+        f.id.includes("dmarc") ||
+        f.id.includes("exposure")
+      ) {
+        score += 500;
+      }
+      return { finding: f, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map((x) => x.finding);
+
+  return scored;
+}
+
+/** Formata um finding de forma breve mas informativa para o email. */
+function formatarFinding(finding: Finding): string {
+  const risco = riscoCliente(finding) || "";
+  if (risco) {
+    return `${finding.descricao.replace(/\.$/, "")} — ${risco}`;
+  }
+  return finding.descricao;
+}
 
 function tem(findings: Finding[], id: string): boolean {
   return findings.some((f) => f.id === id);
@@ -19,8 +118,8 @@ function temPrefixo(findings: Finding[], prefixo: string): boolean {
   return findings.some((f) => f.id.startsWith(prefixo) && f.severidade !== "info");
 }
 
-/** Bullets curtos e personalizados, por ordem de impacto (só factos reais). */
-function bullets(crawl: CrawlResult, findings: Finding[]): string[] {
+/** Bullets curtos e personalizados para a versão clássica, por ordem de impacto. */
+function bulletsClassico(crawl: CrawlResult, findings: Finding[]): string[] {
   const b: string[] = [];
 
   if (crawl.loadTimeMs && crawl.loadTimeMs > 2500) {
@@ -65,7 +164,7 @@ function bullets(crawl: CrawlResult, findings: Finding[]): string[] {
   return b;
 }
 
-/** Frase extra (uma só), quando há um achado crítico, para destacar o pior. */
+/** Frase extra quando há um achado crítico, para destacar o pior. */
 const CRITICO_FRASE: Record<string, string> = {
   "sec.tls.no-https":
     "Há um ponto que classificámos como crítico e que seria o primeiro a resolver: o site ainda não usa HTTPS, o que hoje é um sinal claro de insegurança para quem visita e vos penaliza na Google.",
@@ -85,10 +184,13 @@ function fraseCritico(findings: Finding[]): string | null {
   return "Há um desses pontos que classificámos como crítico e que seria o primeiro que sugeríamos resolver.";
 }
 
-/** Devolve o conteúdo do ficheiro de email (assunto + corpo, texto simples). */
+/**
+ * Estratégia CLÁSSICA: email com relatório anexado, explicação completa.
+ * Devolve o conteúdo do ficheiro de email (assunto + corpo, texto simples).
+ */
 export function gerarEmailOutreach(crawl: CrawlResult, findings: Finding[]): string {
   const url = crawl.requestedUrl;
-  const lista = bullets(crawl, findings).slice(0, 5);
+  const lista = bulletsClassico(crawl, findings).slice(0, 5);
   const critico = fraseCritico(findings);
 
   const assunto = "Relatório: Auditoria de Segurança e Privacidade";
@@ -109,6 +211,45 @@ export function gerarEmailOutreach(crawl: CrawlResult, findings: Finding[]): str
     "Se fizer sentido, estou disponível para uma chamada a explicar o que encontramos e como resolver. Basta responder a este email.",
     "",
     "Com os melhores cumprimentos,",
+  ].join("\n");
+
+  return semTravessoes([`Assunto: ${assunto}`, "", corpo, ""].join("\n"));
+}
+
+/**
+ * Estratégia COLD CALL: email curto sem anexo, bait para responder e pedir relatório.
+ * Devolve o conteúdo do ficheiro de email (assunto + corpo, texto simples).
+ */
+export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding[]): string {
+  const localizacao = extrairLocalizacao(crawl);
+  const categoria = extrairCategoria(crawl);
+  const topFive = top5Findings(findings);
+
+  const assunto = "Auditoria: Segurança e Conformidade do seu website";
+
+  const pontos = topFive.map((f) => `  • ${formatarFinding(f)}`).join("\n");
+
+  const corpo = [
+    "Boa tarde,",
+    "",
+    "O meu nome é Raul Dantas e sou analista de segurança da VERIS.",
+    "",
+    `Esta semana estivemos a analisar alguns websites de ${categoria} em ${localizacao} e o vosso foi um deles.`,
+    "",
+    "Durante essa auditoria identificámos alguns pontos que consideramos relevantes e que poderão merecer atenção:",
+    "",
+    pontos,
+    "",
+    "Nenhum destes pontos significa, por si só, que o website esteja comprometido. No entanto, são situações que podem afetar a segurança, a conformidade legal, o desempenho ou a confiança dos visitantes, sendo recomendável corrigi-las de forma preventiva.",
+    "",
+    "A VERIS é uma empresa especializada em auditoria técnica de websites, segurança informática, conformidade RGPD e análise de desempenho. Pode conhecer melhor o nosso trabalho em www.verisaudit.com.",
+    "",
+    "Se pretender receber a versão completa desta auditoria, com todos os pontos identificados e respetivas recomendações, basta responder a este email. Teremos todo o gosto em enviá-la, sem qualquer compromisso.",
+    "",
+    "Com os melhores cumprimentos,",
+    "",
+    "Raul Dantas",
+    "VERIS · verisaudit.com",
   ].join("\n");
 
   return semTravessoes([`Assunto: ${assunto}`, "", corpo, ""].join("\n"));
