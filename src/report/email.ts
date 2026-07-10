@@ -11,14 +11,6 @@ import { detetarPerfilNegocio, PerfilNegocio } from "./business-profile";
  * carregamento, servidor). Sem juízos subjetivos (ex. cores/design). Sem em dashes.
  */
 
-function dominio(u: string): string {
-  try {
-    return new URL(u).hostname.replace(/^www\./i, "");
-  } catch {
-    return u;
-  }
-}
-
 function tem(findings: Finding[], id: string): boolean {
   return findings.some((f) => f.id === id);
 }
@@ -95,12 +87,11 @@ function fraseCritico(findings: Finding[]): string | null {
 
 /** Devolve o conteúdo do ficheiro de email (assunto + corpo, texto simples). */
 export function gerarEmailOutreach(crawl: CrawlResult, findings: Finding[]): string {
-  const dom = dominio(crawl.finalUrl);
   const url = crawl.requestedUrl;
   const lista = bullets(crawl, findings).slice(0, 5);
   const critico = fraseCritico(findings);
 
-  const assunto = `Encontrámos algo no site da ${dom} que acho que devem saber`;
+  const assunto = "Relatório: Auditoria de Segurança e Privacidade";
 
   const corpo = [
     "Boa tarde,",
