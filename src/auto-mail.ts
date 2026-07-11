@@ -31,6 +31,7 @@ interface AutoOpts {
   delayMs?: string;
   limit?: string;
   strategy?: string;
+  incluirTodos: boolean;
 }
 
 /** Encontra o CSV de leads na pasta (ignora os ficheiros gerados com prefixo _). */
@@ -71,6 +72,7 @@ function main() {
     .option("--delay-ms <n>", "pausa entre envios em ms (passa ao send)")
     .option("--limit <n>", "processa no máximo N leads (auditoria e envio)")
     .option("--strategy <tipo>", "estratégia de email: 'classico' (com relatório) ou 'coldcall' (sem anexo)")
+    .option("--incluir-todos", "envia mesmo para sites sem problemas sérios (ignora a regra de elegibilidade)", false)
     .parse(process.argv);
   const opts = program.opts<AutoOpts>();
 
@@ -157,6 +159,7 @@ function main() {
   if (opts.delayMs) sendArgs.push("--delay-ms", opts.delayMs);
   if (opts.limit) sendArgs.push("--limit", opts.limit);
   if (opts.strategy) sendArgs.push("--strategy", opts.strategy);
+  if (opts.incluirTodos) sendArgs.push("--incluir-todos");
   const codigoSend = correr(TS_NODE, sendArgs);
   process.exitCode = codigoSend;
 }

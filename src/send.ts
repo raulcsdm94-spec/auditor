@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { parseCsv } from "./inputs";
 import { parseEmailFile } from "./report/parse-email-file";
 import { buildEmailHtml, LOGO_CID } from "./report/email-html";
+import { valeAPenaContactar, MOTIVO_NAO_ELEGIVEL } from "./report/outreach";
 import { loadGraphConfig, sendMail } from "./graph/mail";
 import { loadEnv } from "./env";
 
@@ -29,6 +30,7 @@ interface SendOpts {
   delayMs: string;
   limit?: string;
   strategy: string;
+  incluirTodos: boolean;
 }
 
 interface SentLogEntry {
@@ -98,6 +100,7 @@ async function main() {
     .option("--delay-ms <n>", "pausa entre envios em ms", "4000")
     .option("--limit <n>", "processa no máximo N leads elegíveis nesta corrida (útil para testar)")
     .option("--strategy <tipo>", "estratégia de email: 'classico' (com relatório) ou 'coldcall' (sem anexo)", "classico")
+    .option("--incluir-todos", "envia mesmo para sites sem problemas sérios (ignora a regra de elegibilidade)", false)
     .parse(process.argv);
   const opts = program.opts<SendOpts>();
 
@@ -143,6 +146,8 @@ async function main() {
   const iPdf = col("relatorio_cliente_pdf");
   const iEmailFile = strategy === "coldcall" ? col("email_coldcall") : col("email_outreach");
   const iEstado = col("estado");
+  const iCriticos = col("criticos");
+  const iAltos = col("altos");
 
   // Email columns podem não existir em resumos antigos; validar
   if (iEmailFile === -1) {
@@ -158,6 +163,7 @@ async function main() {
   let semEmail = 0;
   let semFicheiros = 0;
   let saltadosCap = 0;
+  let saltadosElegibilidade = 0;
   let processados = 0;
   let enviados = 0;
   let falhados = 0;
@@ -170,8 +176,15 @@ async function main() {
     const pdf = (row[iPdf] || "").trim();
     const emailFile = (row[iEmailFile] || "").trim();
     const estado = (row[iEstado] || "").trim();
+    const criticos = iCriticos >= 0 ? parseInt(row[iCriticos] || "0", 10) || 0 : 0;
+    const altos = iAltos >= 0 ? parseInt(row[iAltos] || "0", 10) || 0 : 0;
 
     if (estado !== "ok") continue;
+    // Elegibilidade: só contactamos sites com problemas sérios (ver outreach.ts).
+    if (!opts.incluirTodos && !valeAPenaContactar(criticos, altos)) {
+      saltadosElegibilidade++;
+      continue;
+    }
     if (!email) {
       semEmail++;
       continue;
@@ -257,6 +270,7 @@ async function main() {
   console.log(
     `\n${opts.send ? "Envio" : "Dry-run"} concluído: ${opts.send ? enviados + " enviados" : wouldSend.length + " enviaria(m)"}` +
       `${falhados ? `, ${falhados} falhado(s)` : ""}, ${jaEnviados} já enviados antes (saltados), ` +
+      `${saltadosElegibilidade} saltados por elegibilidade (${MOTIVO_NAO_ELEGIVEL}), ` +
       `${saltadosCap} saltados por limite diário, ${semEmail} sem email, ${semFicheiros} sem PDF/email-outreach.`
   );
   if (!opts.send) {

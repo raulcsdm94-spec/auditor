@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { parseCsv } from "./inputs";
 import { parseEmailFile } from "./report/parse-email-file";
 import { ASSINATURA } from "./report/signature";
+import { valeAPenaContactar } from "./report/outreach";
 
 /**
  * Cria um ficheiro .eml por lead a partir do resultado de uma auditoria em
@@ -16,6 +17,7 @@ import { ASSINATURA } from "./report/signature";
 interface DraftOpts {
   out: string;
   strategy: "classico" | "coldcall";
+  incluirTodos: boolean;
 }
 
 /** RFC 2047 para assuntos com acentos. */
@@ -94,6 +96,7 @@ function main() {
     .description("Gera rascunhos .eml (destinatário + corpo + PDF) a partir das auditorias.")
     .option("--out <dir>", "pasta dos relatórios (onde está o _resumo-auditorias.csv)", "reports")
     .option("--strategy <tipo>", "estratégia de email: 'classico' (com relatório) ou 'coldcall' (sem anexo)", "classico")
+    .option("--incluir-todos", "gera rascunho mesmo para sites sem problemas sérios (ignora a regra de elegibilidade)", false)
     .parse(process.argv);
   const opts = program.opts<DraftOpts & { strategy: string }>();
 
@@ -120,6 +123,8 @@ function main() {
   const iPdf = col("relatorio_cliente_pdf");
   const iEmailFile = strategy === "coldcall" ? col("email_coldcall") : col("email_outreach");
   const iEstado = col("estado");
+  const iCriticos = col("criticos");
+  const iAltos = col("altos");
 
   // Email outreach pode não existir em resumos antigos; validar
   if (iEmailFile === -1) {
@@ -135,6 +140,7 @@ function main() {
   fs.mkdirSync(outbox, { recursive: true });
 
   let feitos = 0;
+  let naoElegiveis = 0;
   const semEmail: string[] = [];
   const semFicheiros: string[] = [];
 
@@ -144,13 +150,22 @@ function main() {
     const pdf = (row[iPdf] || "").trim();
     const emailFile = (row[iEmailFile] || "").trim();
     const estado = (row[iEstado] || "").trim();
+    const criticos = iCriticos >= 0 ? parseInt(row[iCriticos] || "0", 10) || 0 : 0;
+    const altos = iAltos >= 0 ? parseInt(row[iAltos] || "0", 10) || 0 : 0;
 
     if (estado !== "ok") continue;
+    // Elegibilidade: só geramos rascunho para sites com problemas sérios (ver outreach.ts).
+    if (!opts.incluirTodos && !valeAPenaContactar(criticos, altos)) {
+      naoElegiveis++;
+      continue;
+    }
     if (!email) {
       semEmail.push(url);
       continue;
     }
-    if (!pdf || !fs.existsSync(pdf) || !emailFile || !fs.existsSync(emailFile)) {
+    // O PDF só é necessário no clássico (é o anexo). O cold call é só o email.
+    const precisaPdf = strategy === "classico";
+    if (!emailFile || !fs.existsSync(emailFile) || (precisaPdf && (!pdf || !fs.existsSync(pdf)))) {
       semFicheiros.push(url);
       continue;
     }
@@ -164,6 +179,9 @@ function main() {
 
   const strategyLabel = strategy === "coldcall" ? "cold call (sem PDF)" : "clássico (com PDF)";
   console.log(`✔ ${feitos} rascunho(s) .eml criados (estratégia: ${strategyLabel}) em:\n  ${outbox}\n`);
+  if (naoElegiveis) {
+    console.log(`  ${naoElegiveis} saltado(s) por elegibilidade (sem problemas sérios; usa --incluir-todos para incluir).`);
+  }
   if (semEmail.length) {
     console.log(`  ${semEmail.length} sem email (ignorados): ${semEmail.slice(0, 5).join(", ")}${semEmail.length > 5 ? "…" : ""}`);
   }

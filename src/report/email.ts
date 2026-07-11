@@ -1,7 +1,9 @@
-import { CrawlResult, Finding } from "../types";
+import { CrawlResult, Finding, Severidade } from "../types";
 import { semTravessoes } from "./client-report";
 import { detetarPerfilNegocio } from "./business-profile";
 import { riscoCliente } from "./risco";
+import { ROTULO_CRITICO, ROTULO_GRAVE, ROTULO_MELHORAR } from "./email-html";
+import { MAX_PONTOS_COLDCALL } from "./outreach";
 
 /**
  * Gera emails de outreach PERSONALIZADOS (para copiar e colar).
@@ -67,23 +69,25 @@ function extrairCategoria(crawl: CrawlResult): string {
     restauracao: "restauração",
     ecommerce: "comércio online",
     servicos: "serviços",
+    imobiliario: "imobiliário",
+    saude: "clínicas de saúde",
+    automovel: "serviço automóvel",
     desconhecido: "negócios",
   };
   return categoriaMap[perfil.perfil] || "negócios";
 }
 
-/** Top 5 achados mais críticos, ordenados por: legal/fines > security exploits > severity. */
-function top5Findings(findings: Finding[]): Finding[] {
-  const scored = findings
-    .filter((f) => f.severidade !== "info")
+/** Ordena achados por impacto: legal/coimas > exploits de segurança > severidade. */
+function ordenarPorImpacto(findings: Finding[]): Finding[] {
+  return findings
     .map((f) => {
       let score = 0;
-      // Legal/compliance issues score highest (can lead to fines)
+      // Incumprimento legal pesa mais (pode dar origem a coimas).
       if (f.categoria === "legal") score += 1000;
       if (f.severidade === "critico") score += 100;
       if (f.severidade === "alto") score += 50;
       if (f.severidade === "medio") score += 10;
-      // Security exploits
+      // Exploits de segurança.
       if (
         f.id.includes("tls") ||
         f.id.includes("login") ||
@@ -95,19 +99,64 @@ function top5Findings(findings: Finding[]): Finding[] {
       return { finding: f, score };
     })
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
     .map((x) => x.finding);
-
-  return scored;
 }
 
-/** Formata um finding de forma breve mas informativa para o email. */
+/**
+ * Pontos a mostrar no email de cold call: apenas achados SÉRIOS (crítico ou grave),
+ * porque são os que representam incumprimento/risco real e que motivam o dono a agir.
+ * Os "Algo a melhorar" (médio/info: acessibilidade, avisos preventivos) ficam de fora.
+ *
+ * No máximo MAX_PONTOS_COLDCALL. Se o site não tiver achados sérios (é saltado na
+ * elegibilidade do envio), cai num fallback de médios só para o ficheiro não ficar vazio.
+ */
+function pontosColdCall(findings: Finding[]): Finding[] {
+  const serios = ordenarPorImpacto(
+    findings.filter((f) => f.severidade === "critico" || f.severidade === "alto")
+  );
+  const base = serios.length
+    ? serios
+    : ordenarPorImpacto(findings.filter((f) => f.severidade === "medio"));
+  return base.slice(0, MAX_PONTOS_COLDCALL);
+}
+
+/** Rótulo curto por severidade, prefixado a cada ponto (dá também a cor do "ball" no HTML). */
+const ROTULO_SEVERIDADE: Record<Severidade, string> = {
+  critico: ROTULO_CRITICO,
+  alto: ROTULO_GRAVE,
+  medio: ROTULO_MELHORAR,
+  info: ROTULO_MELHORAR,
+};
+
+/** Suaviza aberturas secas ("Não foi encontrada X" → "X") e capitaliza a 1.ª letra. */
+function limparDescricao(desc: string): string {
+  const limpa = desc
+    .replace(/^Não (?:foi|foram) (?:encontrad|detetad)[oa]s?\s+/i, "")
+    .replace(/^Não existe[m]?\s+/i, "")
+    .trim();
+  return limpa.charAt(0).toUpperCase() + limpa.slice(1);
+}
+
+/**
+ * Formata um finding para o email: "<Rótulo>: <problema> — <risco>".
+ * O rótulo ("Problema Crítico"/…) reflete a severidade e, no HTML, colore o "ball".
+ */
 function formatarFinding(finding: Finding): string {
+  const rotulo = ROTULO_SEVERIDADE[finding.severidade];
+  const desc = limparDescricao(finding.descricao).replace(/\.$/, "");
   const risco = riscoCliente(finding) || "";
-  if (risco) {
-    return `${finding.descricao.replace(/\.$/, "")} — ${risco}`;
-  }
-  return finding.descricao;
+  const corpo = risco ? `${desc} — ${risco}` : desc;
+  return `${rotulo}: ${corpo}`;
+}
+
+/**
+ * Há algum ponto "sério" (com risco real de compromisso ou coima)?
+ * Qualquer crítico, ou qualquer incumprimento legal (que expõe a coimas), conta.
+ */
+function temProblemaSerio(findings: Finding[]): boolean {
+  return findings.some(
+    (f) => f.severidade === "critico" || (f.categoria === "legal" && f.severidade !== "info")
+  );
 }
 
 function tem(findings: Finding[], id: string): boolean {
@@ -221,35 +270,40 @@ export function gerarEmailOutreach(crawl: CrawlResult, findings: Finding[]): str
  * Devolve o conteúdo do ficheiro de email (assunto + corpo, texto simples).
  */
 export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding[]): string {
+  const url = crawl.requestedUrl;
   const localizacao = extrairLocalizacao(crawl);
   const categoria = extrairCategoria(crawl);
-  const topFive = top5Findings(findings);
+  const topPontos = pontosColdCall(findings);
+  const serio = temProblemaSerio(findings);
 
   const assunto = "Auditoria: Segurança e Conformidade do seu website";
 
-  const pontos = topFive.map((f) => `  • ${formatarFinding(f)}`).join("\n");
+  const pontos = topPontos.map((f) => `  • ${formatarFinding(f)}`).join("\n");
+
+  // Frase de enquadramento: a tranquilizadora "nenhum destes pontos…" só entra
+  // quando NÃO há nada sério (um crítico ou incumprimento legal já implica risco real).
+  const enquadramento = serio
+    ? "Isto são situações que podem afetar a segurança, a conformidade legal ou a confiança dos visitantes, e é recomendável corrigi-las de forma preventiva."
+    : "Nenhum destes pontos significa, por si só, que o website esteja comprometido. Isto são situações que podem afetar a segurança, a conformidade legal ou a confiança dos visitantes, e é recomendável corrigi-las de forma preventiva.";
 
   const corpo = [
     "Boa tarde,",
     "",
     "O meu nome é Raul Dantas e sou analista de segurança da VERIS.",
     "",
-    `Esta semana estivemos a analisar alguns websites de ${categoria} em ${localizacao} e o vosso foi um deles.`,
+    `Esta semana estivemos a analisar alguns websites de ${categoria} em ${localizacao} e o ${url} foi um deles.`,
     "",
     "Durante essa auditoria identificámos alguns pontos que consideramos relevantes e que poderão merecer atenção:",
     "",
     pontos,
     "",
-    "Nenhum destes pontos significa, por si só, que o website esteja comprometido. No entanto, são situações que podem afetar a segurança, a conformidade legal, o desempenho ou a confiança dos visitantes, sendo recomendável corrigi-las de forma preventiva.",
-    "",
-    "A VERIS é uma empresa especializada em auditoria técnica de websites, segurança informática, conformidade RGPD e análise de desempenho. Pode conhecer melhor o nosso trabalho em www.verisaudit.com.",
+    enquadramento,
     "",
     "Se pretender receber a versão completa desta auditoria, com todos os pontos identificados e respetivas recomendações, basta responder a este email. Teremos todo o gosto em enviá-la, sem qualquer compromisso.",
     "",
-    "Com os melhores cumprimentos,",
+    "A VERIS é uma empresa especializada em auditoria técnica de websites, segurança informática, conformidade RGPD e análise de desempenho. Pode conhecer melhor o nosso trabalho em www.verisaudit.com.",
     "",
-    "Raul Dantas",
-    "VERIS · verisaudit.com",
+    "Com os melhores cumprimentos,",
   ].join("\n");
 
   return semTravessoes([`Assunto: ${assunto}`, "", corpo, ""].join("\n"));

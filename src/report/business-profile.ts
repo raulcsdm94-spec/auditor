@@ -14,6 +14,9 @@ export type PerfilNegocio =
   | "restauracao"
   | "ecommerce"
   | "servicos"
+  | "imobiliario"
+  | "saude"
+  | "automovel"
   | "desconhecido";
 
 export interface DetecaoPerfil {
@@ -77,6 +80,36 @@ const FRASES: Record<Exclude<PerfilNegocio, "desconhecido">, FrasesPerfil> = {
     confianca:
       "Quem vai confiar um trabalho (e dados de contacto) a uma empresa começa por julgar o site. Avisos de insegurança minam essa confiança à entrada.",
   },
+  imobiliario: {
+    rotulo: "uma imobiliária",
+    oQuePerde: "um contacto de comprador ou vendedor",
+    consequencia:
+      "Numa imobiliária, o site é a montra dos imóveis: quem não consegue ver as fotografias ou pedir uma visita num instante contacta a agência ao lado.",
+    velocidade:
+      "Quem procura casa compara vários portais e agências ao mesmo tempo. Um site que demora a abrir os anúncios perde o contacto para a imobiliária concorrente.",
+    confianca:
+      "Ninguém deixa os seus dados nem agenda a visita a um imóvel através de um site que o browser marca como inseguro, e numa compra de casa a confiança é tudo.",
+  },
+  saude: {
+    rotulo: "uma clínica",
+    oQuePerde: "uma marcação de consulta",
+    consequencia:
+      "Numa clínica, o site é onde o doente marca a consulta: quem não consegue marcar ou contactar num instante liga para a clínica seguinte.",
+    velocidade:
+      "Quem procura uma consulta decide depressa. Um site lento a abrir os serviços ou o contacto faz o doente marcar noutra clínica.",
+    confianca:
+      "Uma clínica lida com dados de saúde, dos mais sensíveis que existem. Um aviso de 'site não seguro' à entrada mina de imediato a confiança do doente.",
+  },
+  automovel: {
+    rotulo: "uma oficina",
+    oQuePerde: "uma marcação",
+    consequencia:
+      "Numa oficina, o site é onde o cliente pede orçamento ou marca a reparação: quem não consegue contactar num instante leva o carro à oficina ao lado.",
+    velocidade:
+      "Quem tem o carro parado quer resolver depressa. Um site lento a abrir os serviços ou o contacto perde a marcação para a oficina seguinte.",
+    confianca:
+      "Ninguém entrega o carro (nem os seus dados) a uma oficina cujo site o browser marca como inseguro. A confiança começa na primeira impressão do site.",
+  },
 };
 
 export function frasesDoPerfil(perfil: PerfilNegocio): FrasesPerfil | null {
@@ -87,6 +120,14 @@ export function frasesDoPerfil(perfil: PerfilNegocio): FrasesPerfil | null {
 /** Motores de reserva conhecidos (sinal forte de alojamento). */
 const MOTORES_RESERVA =
   /siteminder|cloudbeds|mews\.com|guestcentric|bookassist|availpro|thebookingbutton|littlehotelier|octorate|amenitiz|profitroom|roomraccoon|sirvoy|beds24|hotelrunner/i;
+
+/**
+ * Marcas automóveis comuns em Portugal. Sozinha, uma marca NÃO classifica o
+ * site (aparece em blogs, notícias, etc.) — só reforça um sinal de oficina/
+ * peças/serviço auto já presente.
+ */
+const MARCAS_AUTO =
+  /\b(toyota|volkswagen|vw|audi|mercedes(-benz)?|bmw|renault|peugeot|citro[eë]n|ford|opel|fiat|seat|skoda|nissan|hyundai|kia|volvo|mazda|honda|dacia|jaguar|land\s*rover|mini|smart|alfa\s*romeo|jeep|suzuki|mitsubishi|chevrolet|lexus|porsche|tesla)\b/i;
 
 function contarMatches(texto: string, padroes: RegExp[]): { n: number; quais: string[] } {
   const quais: string[] = [];
@@ -129,7 +170,61 @@ export function detetarPerfilNegocio(crawl: CrawlResult): DetecaoPerfil {
     return { perfil: "restauracao", sinais: restComida.quais };
   }
 
-  // 3) Loja online — sinais de carrinho/checkout (inequívocos).
+  // 3) Saúde — clínicas, medicina dentária, consultórios.
+  // Termos "flagship" (compostos e inequívocos) classificam sozinhos.
+  const saudeFlagship =
+    /cl[ií]nica\s+dent[aá]ria|medicina\s+dent[aá]ria|cl[ií]nica\s+m[eé]dica|cl[ií]nica\s+de\s+sa[uú]de|consult[oó]rio\s+m[eé]dico|centro\s+m[eé]dico/.test(
+      texto
+    );
+  const saude = contarMatches(texto, [
+    /\b(cl[ií]nica|dentista|dent[aá]ri[ao]s?|estomatologia|consult[oó]rio)\b/,
+    /\b(pediatr|dermatolog|cardiolog|ginecolog|oftalmolog|ortoped|otorrino|psicolog|psiquiatr|fisioterapia|ortodontia|endodontia|implantolog|nutri[cç][aã]o|an[aá]lises\s+cl[ií]nicas)\w*/,
+    /\bmarca(r|[cç][aã]o)\s+(a\s+sua\s+)?(uma\s+)?consulta|agendar\s+(a\s+sua\s+)?consulta/,
+    /\b(m[eé]dic[oa]s?|corpo\s+cl[ií]nico|especialidades?\s+m[eé]dicas?|seguros?\s+de\s+sa[uú]de|adse|multicare|m[eé]dis)\b/,
+  ]);
+  if (saudeFlagship || saude.n >= 2) {
+    return { perfil: "saude", sinais: saudeFlagship ? ["termo clínico inequívoco"] : saude.quais };
+  }
+
+  // 4) Imobiliário — mediação, venda e arrendamento de imóveis.
+  // "imobiliária"/licença AMI classificam sozinhos. Caso contrário, exigimos
+  // um sinal de transação (comprar/arrendar/angariar) — só falar de
+  // "apartamento" não chega (também aparece em lojas de mobiliário).
+  const imobFlagship =
+    /imobili[aá]ri[ao]|media[cç][aã]o\s+imobili[aá]ria|licen[cç]a\s+ami|\bami\s*\d{3,}/.test(texto);
+  const imobContexto = contarMatches(texto, [
+    /\b(im[oó]vel|im[oó]veis|moradias?|vivendas?)\b/,
+    /\bt[0-4]\b/,
+    /certificado\s+energ[eé]tico|[aá]rea\s+bruta|[aá]rea\s+[uú]til/,
+  ]);
+  const imobTransacao =
+    /\b(arrendamento|arrendar|comprar\s+casa|venda\s+de\s+casas?|venda\s+de\s+im[oó]ve|angaria[cç][aã]o|angariar|im[oó]ve(l|is)\s+para\s+(venda|arrendar|arrendamento))\b/.test(
+      texto
+    );
+  if (imobFlagship || (imobTransacao && imobContexto.n >= 1)) {
+    return {
+      perfil: "imobiliario",
+      sinais: imobFlagship ? ["termo imobiliário inequívoco"] : ["transação imobiliária", ...imobContexto.quais],
+    };
+  }
+
+  // 5) Automóvel — oficinas, garagens, stands e lojas de peças.
+  const auto = contarMatches(texto, [
+    /\b(oficina|garagem)\b/,
+    /\bstand\s+(de\s+)?autom[oó]ve|stand\s+auto\b/,
+    /\b(loja\s+de\s+pe[cç]as|pe[cç]as\s+auto|pe[cç]as\s+autom[oó]ve|acess[oó]rios\s+auto)\b/,
+    /\b(mec[aâ]nic[ao]|repara[cç][aã]o\s+autom|chapa\s+e\s+pintura|bate[- ]?chapa)\b/,
+    /\b(pneus?|alinhamento\s+de\s+dire|revis[aã]o\s+autom|inspe[cç][aã]o\s+autom|diagn[oó]stico\s+autom|muda(n[cç]a)?\s+de\s+[oó]leo)\b/,
+  ]);
+  const temMarca = MARCAS_AUTO.test(texto);
+  if (auto.n >= 2 || (auto.n >= 1 && temMarca)) {
+    return {
+      perfil: "automovel",
+      sinais: temMarca ? [...auto.quais, "marca automóvel detetada"] : auto.quais,
+    };
+  }
+
+  // 6) Loja online — sinais de carrinho/checkout (inequívocos).
   if (
     /add to cart|adicionar ao carrinho|carrinho de compras|finalizar compra|woocommerce|prestashop|shopify|magento|comprar agora/.test(
       texto
@@ -138,7 +233,7 @@ export function detetarPerfilNegocio(crawl: CrawlResult): DetecaoPerfil {
     return { perfil: "ecommerce", sinais: ["carrinho/checkout de loja online detetado"] };
   }
 
-  // 4) Serviços — pedido de orçamento explícito + formulário de contacto.
+  // 7) Serviços — pedido de orçamento explícito + formulário de contacto.
   const temFormulario = crawl.forms.length > 0;
   const pedidoOrcamento =
     /\b(pedir|pe[cç]a|solicite|solicitar|obter)\s+(um\s+)?or[cç]amento\b|or[cç]amento\s+(gr[aá]tis|gratuito|sem\s+compromisso)/.test(
