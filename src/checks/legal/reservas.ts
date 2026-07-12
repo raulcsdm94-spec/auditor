@@ -22,8 +22,37 @@ const check: RegisteredCheck = {
       ];
     }
 
+    // Só faz sentido exigir termos de cancelamento antes do pagamento quando o
+    // site processa mesmo pagamento online. Sites de reserva sem pagamento
+    // (apenas pedido/marcação) ficam de fora — o ponto não lhes é aplicável.
+    if (!crawl.processaPagamento) {
+      return [
+        {
+          id: "legal.reservas.sem-pagamento-online",
+          categoria: "legal",
+          severidade: "info",
+          descricao:
+            "Site de reservas sem pagamento online; verificação de termos de cancelamento antes do pagamento não aplicável.",
+        },
+      ];
+    }
+
     const termos = encontrarPadrao(crawl, ctx.legalRules.patterns.termosCancelamento);
     if (!termos) {
+      // Antes de concluir que os termos faltam, é preciso ter conseguido chegar
+      // à página de checkout/pagamento (onde apareceriam). Se não a alcançámos,
+      // suprimimos a conclusão para não gerar um falso positivo.
+      if (!crawl.checkoutAlcancado) {
+        return [
+          {
+            id: "legal.reservas.checkout-inacessivel",
+            categoria: "legal",
+            severidade: "info",
+            descricao:
+              "Não foi possível alcançar a página de checkout/pagamento para verificar os termos de cancelamento; conclusão suprimida.",
+          },
+        ];
+      }
       return [
         {
           id: "legal.reservas.sem-termos-cancelamento",

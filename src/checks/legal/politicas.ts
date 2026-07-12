@@ -26,7 +26,8 @@ const check: RegisteredCheck = {
         id: "legal.politica-privacidade.missing",
         categoria: "legal",
         severidade: "critico",
-        descricao: "Não foi encontrada Política de Privacidade.",
+        descricao:
+          "O website não apresenta uma Política de Privacidade facilmente acessível para informar os utilizadores sobre o tratamento dos seus dados pessoais.",
         remediacao: ctx.legalRules.remediacao.politicaPrivacidade,
       });
     }

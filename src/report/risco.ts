@@ -36,9 +36,9 @@ const RISCO_POR_ID: Record<string, string> = {
   "legal.politica-cookies.missing":
     "Sem Política de Cookies, os visitantes não sabem que dados são recolhidos, violando requisitos de transparência do RGPD.",
   "legal.livro-reclamacoes.missing":
-    "A ausência do Livro de Reclamações Eletrónico é uma infração sujeita a coima para prestadores de serviços.",
+    "Para prestadores de serviços, a ausência do Livro de Reclamações Eletrónico é uma infração sujeita a coima.",
   "legal.info-empresa.sem-id-fiscal":
-    "A falta de identificação fiscal obrigatória pode constituir infração e mina a credibilidade legal do negócio.",
+    "Recomenda-se apresentar o identificador fiscal (NIPC/NIF) no site: reforça a transparência e a credibilidade do negócio perante clientes e parceiros.",
   "legal.info-empresa.sem-identificacao":
     "Sem identificação clara da empresa, o site incumpre deveres de informação e transmite menos confiança aos clientes.",
   "legal.ecommerce.sem-direito-retratacao":

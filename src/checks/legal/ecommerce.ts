@@ -25,17 +25,11 @@ const check: RegisteredCheck = {
     const findings: Finding[] = [];
     const r = ctx.legalRules.patterns;
 
+    // O direito de livre resolução de 14 dias deixou de ser reportado como
+    // problema: não se aplica aos setores atualmente auditados (hotelaria/
+    // restauração). Mantemos apenas o registo informativo quando está presente.
     const retratacao = encontrarPadrao(crawl, r.direitoRetratacao);
-    if (!retratacao) {
-      findings.push({
-        id: "legal.ecommerce.sem-direito-retratacao",
-        categoria: "legal",
-        severidade: "alto",
-        descricao:
-          "Loja online sem informação clara sobre o direito de livre resolução de 14 dias.",
-        remediacao: ctx.legalRules.remediacao.direitoRetratacao,
-      });
-    } else {
+    if (retratacao) {
       findings.push({
         id: "legal.ecommerce.direito-retratacao.ok",
         categoria: "legal",
@@ -46,7 +40,17 @@ const check: RegisteredCheck = {
     }
 
     const reembolso = encontrarPadrao(crawl, r.politicaReembolso);
-    if (!reembolso) {
+    if (!reembolso && !crawl.checkoutAlcancado) {
+      // Não encontrámos a política, mas também não conseguimos chegar à página
+      // de checkout/pagamento onde apareceria: suprimimos a conclusão.
+      findings.push({
+        id: "legal.ecommerce.checkout-inacessivel",
+        categoria: "legal",
+        severidade: "info",
+        descricao:
+          "Não foi possível alcançar a página de checkout/pagamento para verificar a política de cancelamento/reembolso; conclusão suprimida.",
+      });
+    } else if (!reembolso) {
       findings.push({
         id: "legal.ecommerce.sem-politica-reembolso",
         categoria: "legal",

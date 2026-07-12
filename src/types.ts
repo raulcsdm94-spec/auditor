@@ -104,6 +104,10 @@ export interface CrawlResult {
   pathProbes: PathProbe[];
   /** Páginas efetivamente carregadas (a principal + subpáginas seguidas). */
   paginasVisitadas: string[];
+  /** O site processa pagamento online no próprio site (gateway/campos de cartão)? */
+  processaPagamento: boolean;
+  /** Foi alcançada uma página de checkout/pagamento durante o crawl? */
+  checkoutAlcancado: boolean;
   /** Resolução DNS do domínio (segurança de email/domínio). */
   dns: DnsInfo;
   /** Métricas de acessibilidade da página principal. */

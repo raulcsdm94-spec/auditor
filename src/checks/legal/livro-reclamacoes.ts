@@ -26,7 +26,7 @@ const check: RegisteredCheck = {
       {
         id: "legal.livro-reclamacoes.missing",
         categoria: "legal",
-        severidade: "alto",
+        severidade: "critico",
         descricao: "Não foi encontrado link/widget para o Livro de Reclamações Eletrónico.",
         remediacao: ctx.legalRules.remediacao.livroReclamacoes,
       },

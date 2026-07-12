@@ -10,55 +10,79 @@ import { MAX_PONTOS_COLDCALL } from "./outreach";
  * Duas estratégias: clássica (com relatório) ou cold call (sem anexos).
  */
 
-/** Extrai possível cidade/localização do crawl (address, keywords, etc). Fallback: "sua zona". */
+/** Cidades reconhecidas: chave em minúsculas → nome de apresentação. */
+const CIDADES: Record<string, string> = {
+  lisboa: "Lisboa",
+  porto: "Porto",
+  covilhã: "Covilhã",
+  braga: "Braga",
+  aveiro: "Aveiro",
+  viseu: "Viseu",
+  guarda: "Guarda",
+  "castelo branco": "Castelo Branco",
+  leiria: "Leiria",
+  santarém: "Santarém",
+  setúbal: "Setúbal",
+  évora: "Évora",
+  beja: "Beja",
+  faro: "Faro",
+};
+
+/** Sentinela devolvida quando há múltiplas localizações (cadeia) ou ambiguidade. */
+const PORTUGAL = "Portugal";
+/** Sentinela devolvida quando não é possível determinar a localização. */
+const SEM_LOCAL = "sua zona";
+
+/**
+ * Extrai a cidade/localização do crawl. Estratégia:
+ *  1) Prefere o formato canónico de morada "1234-567 Cidade" (fiável).
+ *  2) Se isso não der, procura menções de cidades no texto.
+ * Em ambos os passos, se surgir MAIS DE UMA cidade distinta (cadeia com várias
+ * localizações, ou texto ambíguo) devolve "Portugal" em vez de arriscar a
+ * cidade errada. Sem qualquer sinal, devolve "sua zona".
+ */
 function extrairLocalizacao(crawl: CrawlResult): string {
   const texto = (crawl.html + " " + crawl.visibleText).toLowerCase();
 
-  // Procura por endereço em formato comum (Rua, Avenida, etc)
-  const enderecoMatch = texto.match(
-    /(?:rua|avenida|av\.|travessa|largo|praça|alameda|estrada|passagem)\s+([a-záéíóúàâãõç\s]+?),?\s+(?:\d+[a-z]*)?(?:\s*-\s*)?(\d{4}-\d{3}|\d{4}\s*-\s*\d{3})?/i
-  );
-  if (enderecoMatch) {
-    const cp = enderecoMatch[2];
-    if (cp) {
-      const codigoRegiao: Record<string, string> = {
-        "01": "Lisboa",
-        "02": "Porto",
-        "03": "Covilhã",
-        "04": "Castelo Branco",
-        "05": "Guarda",
-        "06": "Leiria",
-        "07": "Aveiro",
-        "08": "Viseu",
-        "09": "Covilhã",
-      };
-      const primeiroDigito = cp.slice(0, 2);
-      if (codigoRegiao[primeiroDigito]) return codigoRegiao[primeiroDigito];
+  // 1) Cidade a seguir a um código postal canónico "NNNN-NNN Localidade".
+  // A captura fica pela localidade: só letras/espaços/hífen na mesma linha,
+  // parando em pontuação ou dígito (não engole a frase seguinte).
+  const porCodigoPostal = new Set<string>();
+  const re = /\b\d{4}-\d{3}[ ]+([a-zà-ÿ][a-zà-ÿ '\-]{1,28})/gi;
+  for (const m of texto.matchAll(re)) {
+    const localidade = m[1];
+    for (const chave of Object.keys(CIDADES)) {
+      if (localidade.includes(chave)) porCodigoPostal.add(CIDADES[chave]);
     }
   }
+  if (porCodigoPostal.size === 1) return [...porCodigoPostal][0];
+  if (porCodigoPostal.size > 1) return PORTUGAL;
 
-  // Procura por palavras-chave geográficas
-  const cidades = [
-    "lisboa",
-    "porto",
-    "covilhã",
-    "braga",
-    "aveiro",
-    "viseu",
-    "guarda",
-    "castelo branco",
-    "leiria",
-    "santarém",
-    "setúbal",
-    "évora",
-    "beja",
-    "faro",
-  ];
-  for (const cidade of cidades) {
-    if (texto.includes(cidade)) return cidade.charAt(0).toUpperCase() + cidade.slice(1);
+  // 2) Menções de cidades no texto. Se houver mais do que uma cidade distinta,
+  // não adivinhamos (evita o clássico "em Porto" quando o negócio é de Braga).
+  const mencionadas = new Set<string>();
+  for (const chave of Object.keys(CIDADES)) {
+    if (texto.includes(chave)) mencionadas.add(CIDADES[chave]);
   }
+  if (mencionadas.size === 1) return [...mencionadas][0];
+  if (mencionadas.size > 1) return PORTUGAL;
 
-  return "sua zona";
+  return SEM_LOCAL;
+}
+
+/**
+ * Constrói a frase de localização com a preposição correta:
+ * "no Porto", "na Covilhã", "em Lisboa", "em Portugal", "na sua zona".
+ */
+function fraseLocalizacao(loc: string): string {
+  const PREP: Record<string, string> = {
+    Porto: "no Porto",
+    Covilhã: "na Covilhã",
+    Guarda: "na Guarda",
+    Portugal: "em Portugal",
+    [SEM_LOCAL]: "na sua zona",
+  };
+  return PREP[loc] || `em ${loc}`;
 }
 
 /** Extrai categoria de negócio em português amigável (ou "negócios" se desconhecido). */
@@ -138,14 +162,22 @@ function limparDescricao(desc: string): string {
 }
 
 /**
- * Formata um finding para o email: "<Rótulo>: <problema> — <risco>".
- * O rótulo ("Problema Crítico"/…) reflete a severidade e, no HTML, colore o "ball".
+ * Findings cuja descrição já é uma frase completa e informativa; nestes não se
+ * acrescenta a frase de risco, para o ponto não ficar redundante.
+ */
+const IDS_SEM_RISCO_EMAIL = new Set(["legal.politica-privacidade.missing"]);
+
+/**
+ * Formata um finding para o email: "<Rótulo>: <problema>. <risco>".
+ * A transição problema → explicação usa ponto final (e não vírgula) para ser
+ * claramente percetível. O rótulo ("Problema Crítico"/…) reflete a severidade
+ * e, no HTML, colore o "ball".
  */
 function formatarFinding(finding: Finding): string {
   const rotulo = ROTULO_SEVERIDADE[finding.severidade];
   const desc = limparDescricao(finding.descricao).replace(/\.$/, "");
-  const risco = riscoCliente(finding) || "";
-  const corpo = risco ? `${desc} — ${risco}` : desc;
+  const risco = IDS_SEM_RISCO_EMAIL.has(finding.id) ? "" : riscoCliente(finding) || "";
+  const corpo = risco ? `${desc}. ${risco}` : desc;
   return `${rotulo}: ${corpo}`;
 }
 
@@ -291,7 +323,7 @@ export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding
     "",
     "O meu nome é Raul Dantas e sou analista de segurança da VERIS.",
     "",
-    `Esta semana estivemos a analisar alguns websites de ${categoria} em ${localizacao} e o ${url} foi um deles.`,
+    `Esta semana estivemos a analisar alguns websites de ${categoria} ${fraseLocalizacao(localizacao)} e o ${url} foi um deles.`,
     "",
     "Durante essa auditoria identificámos alguns pontos que consideramos relevantes e que poderão merecer atenção:",
     "",

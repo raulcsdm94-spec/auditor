@@ -87,14 +87,32 @@ export async function crawl(opts: CrawlOptions): Promise<CrawlResult> {
     });
 
     const t0 = Date.now();
-    const response = await page.goto(opts.url, {
+    let response = await page.goto(opts.url, {
       waitUntil: "domcontentloaded",
       timeout,
     });
     const loadTimeMs = Date.now() - t0;
 
-    // Pequena espera para banners de cookies / scripts que definem cookies.
+    // Pequena espera para banners de cookies / scripts que definem cookies e,
+    // já agora, para redirecionamentos por JavaScript (location = ...), que o
+    // page.url() abaixo já reflete.
     await page.waitForTimeout(2500).catch(() => {});
+
+    // Segue redirecionamentos por <meta http-equiv="refresh">, que o goto não
+    // segue sozinho. Ex.: domínios que reencaminham para a "página mãe"
+    // (caso taberna-do-paco.pt). Até 2 saltos, para não entrar em ciclos.
+    for (let hop = 0; hop < 2; hop++) {
+      const alvo = await proximoMetaRefresh(page);
+      if (!alvo) break;
+      try {
+        const r = await page.goto(alvo, { waitUntil: "domcontentloaded", timeout });
+        if (r) response = r;
+        await page.waitForTimeout(1500).catch(() => {});
+      } catch (e) {
+        warnings.push(`Falha ao seguir redirecionamento para ${alvo}: ${(e as Error).message}`);
+        break;
+      }
+    }
 
     const finalUrl = page.url();
     const statusCode = response ? response.status() : null;
@@ -171,6 +189,17 @@ export async function crawl(opts: CrawlOptions): Promise<CrawlResult> {
 
     await context.close();
 
+    // ---- Sinais de pagamento online e de página de checkout alcançada ----
+    // Usados pelos checks legais para só concluírem que faltam termos de
+    // cancelamento/reembolso quando (a) o site processa mesmo pagamento e (b)
+    // conseguimos chegar à página de checkout/pagamento onde tal apareceria.
+    const processaPagamento = detetarPagamentoOnline(html, requests);
+    const checkoutAlcancado =
+      processaPagamento ||
+      paginasVisitadas.some((u) =>
+        /checkout|carrinho|\bcart\b|pagamento|payment|finaliz/i.test(u)
+      );
+
     return {
       requestedUrl: opts.url,
       finalUrl,
@@ -185,6 +214,8 @@ export async function crawl(opts: CrawlOptions): Promise<CrawlResult> {
       forms,
       pathProbes,
       paginasVisitadas,
+      processaPagamento,
+      checkoutAlcancado,
       dns,
       a11y,
       screenshotPath,
@@ -193,6 +224,51 @@ export async function crawl(opts: CrawlOptions): Promise<CrawlResult> {
   } finally {
     if (browser) await browser.close().catch(() => {});
   }
+}
+
+/**
+ * Devolve o URL absoluto de um redirecionamento <meta http-equiv="refresh"> na
+ * página atual, ou null se não existir. Só considera refreshes imediatos ou
+ * curtos (até 10s), que são de facto redirecionamentos e não "auto-reload".
+ */
+async function proximoMetaRefresh(
+  page: import("playwright").Page
+): Promise<string | null> {
+  try {
+    return await page.evaluate(() => {
+      const meta = document.querySelector('meta[http-equiv="refresh" i]');
+      const content = meta?.getAttribute("content") || "";
+      const m = content.match(/^\s*(\d+)\s*;\s*url\s*=\s*(.+?)\s*$/i);
+      if (!m) return null;
+      if (parseInt(m[1], 10) > 10) return null;
+      let alvo = m[2].trim().replace(/^['"]|['"]$/g, "");
+      try {
+        alvo = new URL(alvo, location.href).href;
+      } catch {
+        return null;
+      }
+      return alvo === location.href ? null : alvo;
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Gateways de pagamento comuns (internacionais e portugueses). */
+const GATEWAYS_PAGAMENTO =
+  /stripe\.com|js\.stripe|checkout\.stripe|paypal|paypalobjects|braintree|\badyen\b|mollie|klarna|ifthenpay|eupago|easypay|hipay|redunicre|\bunicre\b|\bsibs\b|mbway|multibanco|lusopay|pagaqui|viva\s*wallet|vivawallet/i;
+
+/**
+ * O site processa pagamento online no próprio site? Sinal forte: um gateway de
+ * pagamento nos pedidos de rede/HTML, ou campos de cartão de crédito num
+ * formulário. (Reservas sem pagamento online devolvem false.)
+ */
+function detetarPagamentoOnline(html: string, requests: CapturedRequest[]): boolean {
+  const urls = requests.map((r) => r.url).join("\n");
+  if (GATEWAYS_PAGAMENTO.test(urls) || GATEWAYS_PAGAMENTO.test(html)) return true;
+  return /autocomplete=["']?cc-number|name=["'][^"']*card[-_]?number|n[uú]mero\s+do\s+cart[aã]o|\bcvv\b|\bcvc\b/i.test(
+    html
+  );
 }
 
 async function extractTls(
