@@ -1,6 +1,5 @@
 import { CrawlResult, Finding, Severidade } from "../types";
 import { semTravessoes } from "./client-report";
-import { detetarPerfilNegocio } from "./business-profile";
 import { riscoCliente } from "./risco";
 import { ROTULO_CRITICO, ROTULO_GRAVE, ROTULO_MELHORAR } from "./email-html";
 import { MAX_PONTOS_COLDCALL } from "./outreach";
@@ -9,97 +8,6 @@ import { MAX_PONTOS_COLDCALL } from "./outreach";
  * Gera emails de outreach PERSONALIZADOS (para copiar e colar).
  * Duas estratégias: clássica (com relatório) ou cold call (sem anexos).
  */
-
-/** Cidades reconhecidas: chave em minúsculas → nome de apresentação. */
-const CIDADES: Record<string, string> = {
-  lisboa: "Lisboa",
-  porto: "Porto",
-  covilhã: "Covilhã",
-  braga: "Braga",
-  aveiro: "Aveiro",
-  viseu: "Viseu",
-  guarda: "Guarda",
-  "castelo branco": "Castelo Branco",
-  leiria: "Leiria",
-  santarém: "Santarém",
-  setúbal: "Setúbal",
-  évora: "Évora",
-  beja: "Beja",
-  faro: "Faro",
-};
-
-/** Sentinela devolvida quando há múltiplas localizações (cadeia) ou ambiguidade. */
-const PORTUGAL = "Portugal";
-/** Sentinela devolvida quando não é possível determinar a localização. */
-const SEM_LOCAL = "sua zona";
-
-/**
- * Extrai a cidade/localização do crawl. Estratégia:
- *  1) Prefere o formato canónico de morada "1234-567 Cidade" (fiável).
- *  2) Se isso não der, procura menções de cidades no texto.
- * Em ambos os passos, se surgir MAIS DE UMA cidade distinta (cadeia com várias
- * localizações, ou texto ambíguo) devolve "Portugal" em vez de arriscar a
- * cidade errada. Sem qualquer sinal, devolve "sua zona".
- */
-function extrairLocalizacao(crawl: CrawlResult): string {
-  const texto = (crawl.html + " " + crawl.visibleText).toLowerCase();
-
-  // 1) Cidade a seguir a um código postal canónico "NNNN-NNN Localidade".
-  // A captura fica pela localidade: só letras/espaços/hífen na mesma linha,
-  // parando em pontuação ou dígito (não engole a frase seguinte).
-  const porCodigoPostal = new Set<string>();
-  const re = /\b\d{4}-\d{3}[ ]+([a-zà-ÿ][a-zà-ÿ '\-]{1,28})/gi;
-  for (const m of texto.matchAll(re)) {
-    const localidade = m[1];
-    for (const chave of Object.keys(CIDADES)) {
-      if (localidade.includes(chave)) porCodigoPostal.add(CIDADES[chave]);
-    }
-  }
-  if (porCodigoPostal.size === 1) return [...porCodigoPostal][0];
-  if (porCodigoPostal.size > 1) return PORTUGAL;
-
-  // 2) Menções de cidades no texto. Se houver mais do que uma cidade distinta,
-  // não adivinhamos (evita o clássico "em Porto" quando o negócio é de Braga).
-  const mencionadas = new Set<string>();
-  for (const chave of Object.keys(CIDADES)) {
-    if (texto.includes(chave)) mencionadas.add(CIDADES[chave]);
-  }
-  if (mencionadas.size === 1) return [...mencionadas][0];
-  if (mencionadas.size > 1) return PORTUGAL;
-
-  return SEM_LOCAL;
-}
-
-/**
- * Constrói a frase de localização com a preposição correta:
- * "no Porto", "na Covilhã", "em Lisboa", "em Portugal", "na sua zona".
- */
-function fraseLocalizacao(loc: string): string {
-  const PREP: Record<string, string> = {
-    Porto: "no Porto",
-    Covilhã: "na Covilhã",
-    Guarda: "na Guarda",
-    Portugal: "em Portugal",
-    [SEM_LOCAL]: "na sua zona",
-  };
-  return PREP[loc] || `em ${loc}`;
-}
-
-/** Extrai categoria de negócio em português amigável (ou "negócios" se desconhecido). */
-function extrairCategoria(crawl: CrawlResult): string {
-  const perfil = detetarPerfilNegocio(crawl);
-  const categoriaMap: Record<string, string> = {
-    alojamento: "alojamentos",
-    restauracao: "restauração",
-    ecommerce: "comércio online",
-    servicos: "serviços",
-    imobiliario: "imobiliário",
-    saude: "clínicas de saúde",
-    automovel: "serviço automóvel",
-    desconhecido: "negócios",
-  };
-  return categoriaMap[perfil.perfil] || "negócios";
-}
 
 /** Ordena achados por impacto: legal/coimas > exploits de segurança > severidade. */
 function ordenarPorImpacto(findings: Finding[]): Finding[] {
@@ -211,26 +119,26 @@ function bulletsClassico(crawl: CrawlResult, findings: Finding[]): string[] {
     b.push("Site sem HTTPS (sinal de insegurança para visitantes e para a Google)");
   }
   if (tem(findings, "legal.politica-privacidade.missing")) {
-    b.push("Sem Política de Privacidade (obrigatória no RGPD)");
+    b.push("Sem Política de Privacidade (obrigatória no RGPD, arts. 13.º e 14.º)");
   }
   if (
     tem(findings, "legal.banner-cookies.tracking-sem-consentimento") ||
     tem(findings, "legal.banner-cookies.missing")
   ) {
-    b.push("Cookies de tracking a disparar antes de consentimento (dos pontos mais fiscalizados no RGPD)");
+    b.push("Cookies de tracking a disparar antes de consentimento (viola a Lei n.º 41/2004, art. 5.º, e o RGPD; dos pontos mais fiscalizados)");
   }
   if (tem(findings, "sec.email.dmarc-missing")) {
     b.push("Sem proteção DMARC no email (permite a qualquer pessoa falsificar emails em vosso nome)");
   }
   if (tem(findings, "legal.livro-reclamacoes.missing")) {
-    b.push("Livro de Reclamações eletrónico não encontrado (obrigatório para prestadores de serviços)");
+    b.push("Livro de Reclamações eletrónico não encontrado (obrigatório sob o DL n.º 156/2005, com coima de 150€ a 15.000€)");
   }
   const server = crawl.headers["server"];
   if (server && /\d/.test(server)) {
     b.push(`O servidor revela a versão do software (${server}) (facilita ataques a falhas conhecidas)`);
   }
   if (tem(findings, "legal.politica-cookies.missing")) {
-    b.push("Sem Política de Cookies (exigida pelo RGPD)");
+    b.push("Sem Política de Cookies (exigida pela Lei n.º 41/2004 e pelo RGPD)");
   }
   if (!/<meta[^>]+name=["']viewport["']/i.test(crawl.html)) {
     b.push("Sem viewport para telemóvel (prejudica a leitura em mobile)");
@@ -250,7 +158,7 @@ const CRITICO_FRASE: Record<string, string> = {
   "sec.tls.no-https":
     "Há um ponto que classificámos como crítico e que seria o primeiro a resolver: o site ainda não usa HTTPS, o que hoje é um sinal claro de insegurança para quem visita e vos penaliza na Google.",
   "legal.politica-privacidade.missing":
-    "Há um ponto que classificámos como crítico e que seria o primeiro a resolver: a ausência de Política de Privacidade, que é uma obrigação central do RGPD.",
+    "Há um ponto que classificámos como crítico e que seria o primeiro a resolver: a ausência de Política de Privacidade, que é uma obrigação central do RGPD (Regulamento (UE) 2016/679, arts. 13.º e 14.º).",
   "sec.tls.cert-expirado":
     "Há um ponto que classificámos como crítico e que seria o primeiro a resolver: o certificado de segurança do site está expirado, o que faz os browsers mostrarem avisos de perigo aos visitantes.",
 };
@@ -303,8 +211,6 @@ export function gerarEmailOutreach(crawl: CrawlResult, findings: Finding[]): str
  */
 export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding[]): string {
   const url = crawl.requestedUrl;
-  const localizacao = extrairLocalizacao(crawl);
-  const categoria = extrairCategoria(crawl);
   const topPontos = pontosColdCall(findings);
   const serio = temProblemaSerio(findings);
 
@@ -323,7 +229,7 @@ export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding
     "",
     "O meu nome é Raul Dantas e sou analista de segurança da VERIS.",
     "",
-    `Esta semana estivemos a analisar alguns websites de ${categoria} ${fraseLocalizacao(localizacao)} e o ${url} foi um deles.`,
+    `Esta semana estivemos a analisar alguns websites de negócios na sua região e o ${url} foi um deles.`,
     "",
     "Durante essa auditoria identificámos alguns pontos que consideramos relevantes e que poderão merecer atenção:",
     "",

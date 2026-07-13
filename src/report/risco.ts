@@ -26,27 +26,27 @@ const RISCO_POR_ID: Record<string, string> = {
   "sec.tls.cert-ainda-nao-valido":
     "Um certificado fora do período de validade leva os browsers a rejeitar a ligação como insegura.",
   "legal.banner-cookies.missing":
-    "Recolher dados de visitantes sem consentimento válido viola o RGPD e expõe o negócio a queixas e coimas.",
+    "Recolher dados de visitantes sem consentimento válido viola a Lei n.º 41/2004 (art. 5.º) e o RGPD, e expõe o negócio a queixas e coimas.",
   "legal.banner-cookies.sem-rejeitar":
-    "Um banner sem opção real de recusar não cumpre o RGPD: o consentimento não é válido e o site fica exposto a queixas e coimas.",
+    "Um banner sem opção real de recusar não cumpre a Lei n.º 41/2004 (art. 5.º) nem o RGPD: o consentimento não é válido e o site fica exposto a queixas e coimas.",
   "legal.banner-cookies.tracking-sem-consentimento":
-    "Disparar cookies de tracking antes do consentimento viola o RGPD/ePrivacy e é um dos focos mais comuns de fiscalização.",
+    "Disparar cookies de tracking antes do consentimento viola a Lei n.º 41/2004 (art. 5.º) e o RGPD/ePrivacy, e é um dos focos mais comuns de fiscalização.",
   "legal.politica-privacidade.missing":
-    "Sem Política de Privacidade, o site incumpre uma obrigação central do RGPD, com risco direto de coimas e perda de confiança.",
+    "Sem Política de Privacidade, o site fica exposto a coimas do regulador (CNPD) e à perda de confiança dos visitantes.",
   "legal.politica-cookies.missing":
-    "Sem Política de Cookies, os visitantes não sabem que dados são recolhidos, violando requisitos de transparência do RGPD.",
+    "Sem Política de Cookies, os visitantes não sabem que dados são recolhidos, violando os deveres de transparência da Lei n.º 41/2004 (art. 5.º) e do RGPD.",
   "legal.livro-reclamacoes.missing":
-    "Para prestadores de serviços, a ausência do Livro de Reclamações Eletrónico é uma infração sujeita a coima.",
+    "Para prestadores de serviços, a ausência do Livro de Reclamações Eletrónico é uma infração ao DL n.º 156/2005 (alterado pelo DL n.º 74/2017), sujeita a coima de 150€ a 15.000€.",
   "legal.info-empresa.sem-id-fiscal":
-    "Recomenda-se apresentar o identificador fiscal (NIPC/NIF) no site: reforça a transparência e a credibilidade do negócio perante clientes e parceiros.",
+    "A indicação do identificador fiscal (NIPC/NIF) no site é uma obrigação legal das empresas (art. 171.º do Código das Sociedades Comerciais, que abrange os sítios na Internet, e DL n.º 7/2004, art. 10.º); a sua ausência é um incumprimento.",
   "legal.info-empresa.sem-identificacao":
-    "Sem identificação clara da empresa, o site incumpre deveres de informação e transmite menos confiança aos clientes.",
+    "Sem identificação clara da empresa (nome, sede e contactos), o site incumpre os deveres de informação do DL n.º 7/2004 (art. 10.º) e transmite menos confiança aos clientes.",
   "legal.ecommerce.sem-direito-retratacao":
-    "Não informar o direito de livre resolução de 14 dias viola os direitos do consumidor e pode gerar queixas e coimas.",
+    "Não informar o direito de livre resolução de 14 dias viola os direitos do consumidor nas vendas à distância (DL n.º 24/2014, art. 10.º) e pode gerar queixas e coimas.",
   "legal.ecommerce.sem-politica-reembolso":
-    "Sem política de reembolso/cancelamento clara, aumentam os litígios com clientes e o risco de queixas.",
+    "Sem política de reembolso/cancelamento clara, o site fica aquém dos deveres de informação ao consumidor (DL n.º 24/2014) e aumentam os litígios e queixas.",
   "legal.reservas.sem-termos-cancelamento":
-    "Sem termos de cancelamento visíveis antes do pagamento, o site fica exposto a disputas e queixas de consumidores.",
+    "Sem termos de cancelamento visíveis antes do pagamento, o site fica aquém dos deveres de informação ao consumidor (DL n.º 24/2014) e exposto a disputas e queixas.",
 };
 
 /** Ids dinâmicos (com sufixo variável) apanhados por prefixo. */
@@ -89,11 +89,11 @@ const RISCO_POR_PREFIXO: [string, string][] = [
   ],
   [
     "legal.trackers",
-    "Carregar trackers de terceiros e enviar dados para fora da UE sem base legal e consentimento expõe o negócio a queixas e coimas (RGPD).",
+    "Carregar trackers de terceiros e enviar dados para fora da UE sem base legal e consentimento viola o RGPD (transferências internacionais, Cap. V) e a Lei n.º 41/2004, expondo o negócio a queixas e coimas.",
   ],
   [
     "legal.a11y",
-    "Barreiras de acessibilidade excluem utilizadores com deficiência e podem violar o Ato Europeu da Acessibilidade, com risco legal e reputacional.",
+    "Barreiras de acessibilidade excluem utilizadores com deficiência e podem violar o Ato Europeu da Acessibilidade (Diretiva (UE) 2019/882, transposta pelo DL n.º 82/2022), com risco legal e reputacional.",
   ],
 ];
 

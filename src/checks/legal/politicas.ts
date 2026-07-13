@@ -27,7 +27,7 @@ const check: RegisteredCheck = {
         categoria: "legal",
         severidade: "critico",
         descricao:
-          "O website não apresenta uma Política de Privacidade facilmente acessível para informar os utilizadores sobre o tratamento dos seus dados pessoais.",
+          "O website não apresenta uma Política de Privacidade facilmente acessível, o que incumpre o RGPD (Regulamento (UE) 2016/679, arts. 13.º e 14.º, e Lei n.º 58/2019) quanto à informação dos utilizadores sobre o tratamento dos seus dados pessoais.",
         remediacao: ctx.legalRules.remediacao.politicaPrivacidade,
       });
     }
