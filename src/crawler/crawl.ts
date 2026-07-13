@@ -32,8 +32,40 @@ const EXPOSURE_PATHS = [
   "/server-status",
 ];
 
+// UA de um Chrome real: muitos WAFs servem uma página de "desafio" (ou conteúdo
+// diferente) a user-agents que parecem bots. Para a auditoria refletir o que um
+// visitante real vê — e evitar falsos positivos — apresentamo-nos como um browser
+// normal. O acesso continua a ser passivo (um simples GET a páginas públicas).
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; website-auditor/0.1; +autorizado-pela-consultoria)";
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
+/**
+ * Deteta páginas de "desafio"/interstitial de proteção anti-bot (Cloudflare,
+ * DDoS-Guard, etc.), em que NÃO estamos a ver o site real. Auditar estas páginas
+ * geraria falsos positivos (tudo — políticas, cookies, reclamações — aparece
+ * "em falta"), por isso o crawl deve ser abortado. Devolve o motivo, ou null.
+ */
+function motivoBloqueio(
+  title: string,
+  visibleText: string,
+  html: string,
+  statusCode: number | null,
+  numLinks: number
+): string | null {
+  const TITULOS =
+    /um momento,? por favor|one moment|just a moment|checking your browser|please wait|verifying you are (?:a )?human|attention required|acesso negado|access denied|ddos-guard/i;
+  if (TITULOS.test(title)) return `página de desafio anti-bot ("${title.trim()}")`;
+
+  const h = html.toLowerCase();
+  const assinaturaWAF =
+    /ddos-guard|cf-browser-verification|challenge-platform|__cf_chl|cdn-cgi\/challenge|_incapsula_|imperva/i.test(h);
+  const paginaVazia = numLinks === 0 && visibleText.replace(/\s+/g, " ").trim().length < 200;
+  if (assinaturaWAF && paginaVazia) return "página de desafio anti-bot (WAF)";
+  if ((statusCode === 403 || statusCode === 503) && paginaVazia) {
+    return `acesso bloqueado (HTTP ${statusCode})`;
+  }
+  return null;
+}
 
 export interface CrawlOptions {
   url: string;
@@ -124,6 +156,49 @@ export async function crawl(opts: CrawlOptions): Promise<CrawlResult> {
     // ---- Evidência da página principal ----
     let html = await page.content();
     let visibleText = (await page.evaluate(() => document.body?.innerText || "")).toLowerCase();
+
+    // ---- Barreira anti-bot (WAF/desafio)? Abortar antes de gerar falsos positivos ----
+    // Se caímos numa página de "desafio" não estamos a ver o site real; qualquer
+    // check legal daria "em falta". Devolvemos um resultado marcado como bloqueado
+    // (a auditoria trata-o como falha e não gera relatório/email).
+    const pageTitle = await page.title().catch(() => "");
+    const numLinks = await page
+      .evaluate(() => document.querySelectorAll("a[href]").length)
+      .catch(() => 0);
+    const bloqueio = motivoBloqueio(pageTitle, visibleText, html, statusCode, numLinks);
+    if (bloqueio) {
+      return {
+        requestedUrl: opts.url,
+        finalUrl,
+        statusCode,
+        loadTimeMs,
+        html,
+        visibleText,
+        headers,
+        cookies: [],
+        requests,
+        tls,
+        forms: [],
+        pathProbes: [],
+        paginasVisitadas: [finalUrl],
+        processaPagamento: false,
+        checkoutAlcancado: false,
+        dns: { dominio: hostnameSeguro(finalUrl), mx: [], caa: [], erros: ["crawl bloqueado"] },
+        a11y: {
+          analisado: false,
+          temTitulo: false,
+          imagensTotal: 0,
+          imagensSemAlt: 0,
+          inputsTotal: 0,
+          inputsSemNome: 0,
+          botoesSemNome: 0,
+          saltosHeading: 0,
+        },
+        bloqueado: { motivo: bloqueio },
+        warnings,
+      };
+    }
+
     const forms: DetectedForm[] = await extractForms(page);
     const a11y = await extractA11y(page);
 

@@ -9,10 +9,14 @@ export function encontrarPadrao(
   crawl: CrawlResult,
   patterns: string[]
 ): { match: string } | null {
-  const haystack = (crawl.html + "\n" + crawl.visibleText).toLowerCase();
+  const bruto = (crawl.html + "\n" + crawl.visibleText).toLowerCase();
+  // Segunda versão do texto com separadores de URL/slug (-, _, /) trocados por
+  // espaços: assim um link de rodapé como "/politica-de-cookies" ou
+  // "privacidade_cookies" também corresponde ao padrão "política de cookies".
+  const normalizado = bruto.replace(/[-_/]+/g, " ");
   for (const p of patterns) {
     const needle = p.toLowerCase();
-    if (haystack.includes(needle)) return { match: p };
+    if (bruto.includes(needle) || normalizado.includes(needle)) return { match: p };
   }
   return null;
 }

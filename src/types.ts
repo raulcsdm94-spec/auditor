@@ -113,6 +113,12 @@ export interface CrawlResult {
   /** Métricas de acessibilidade da página principal. */
   a11y: A11yInfo;
   screenshotPath?: string;
+  /**
+   * Preenchido quando o crawl foi barrado por uma página de desafio/anti-bot
+   * (WAF, DDoS-Guard, Cloudflare…) e NÃO chegámos a ver o site real. Nestes
+   * casos a auditoria é abortada para não gerar falsos positivos.
+   */
+  bloqueado?: { motivo: string };
   /** Erros não-fatais ocorridos durante o crawl. */
   warnings: string[];
 }

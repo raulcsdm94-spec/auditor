@@ -41,6 +41,19 @@ const check: RegisteredCheck = {
         descricao: "Política de Cookies encontrada.",
         evidencia: `Correspondência: "${cookies.match}"`,
       });
+    } else if (encontrarPadrao(crawl, r.bannerCookies)) {
+      // Há um banner de consentimento de cookies mas não localizámos uma página
+      // dedicada de "Política de Cookies" — que muitas vezes está integrada na
+      // Política de Privacidade ou é aberta pelo próprio banner. Não é um
+      // incumprimento reportável: seria um falso positivo dizer "não tem cookies"
+      // a um site que visivelmente gere o consentimento. Fica só como nota (info).
+      findings.push({
+        id: "legal.politica-cookies.integrada",
+        categoria: "legal",
+        severidade: "info",
+        descricao:
+          "Banner de consentimento de cookies presente; não foi localizada uma Política de Cookies dedicada (poderá estar integrada na Política de Privacidade).",
+      });
     } else {
       findings.push({
         id: "legal.politica-cookies.missing",
