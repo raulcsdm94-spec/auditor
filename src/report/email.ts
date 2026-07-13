@@ -9,24 +9,31 @@ import { MAX_PONTOS_COLDCALL } from "./outreach";
  * Duas estratégias: clássica (com relatório) ou cold call (sem anexos).
  */
 
-/** Ordena achados por impacto: legal/coimas > exploits de segurança > severidade. */
+/**
+ * Ordena achados por impacto. A SEVERIDADE manda sempre: um problema crítico
+ * aparece antes de qualquer grave, e um grave antes de qualquer médio — para o
+ * email (e o seu primeiro ponto) liderar com o mais crítico. Só dentro da mesma
+ * severidade é que desempatamos por incumprimento legal (coimas) e depois por
+ * exploits de segurança.
+ */
 function ordenarPorImpacto(findings: Finding[]): Finding[] {
   return findings
     .map((f) => {
       let score = 0;
-      // Incumprimento legal pesa mais (pode dar origem a coimas).
-      if (f.categoria === "legal") score += 1000;
-      if (f.severidade === "critico") score += 100;
-      if (f.severidade === "alto") score += 50;
-      if (f.severidade === "medio") score += 10;
-      // Exploits de segurança.
+      // Primário: severidade (blocos largos para nunca serem ultrapassados).
+      if (f.severidade === "critico") score += 10000;
+      else if (f.severidade === "alto") score += 5000;
+      else if (f.severidade === "medio") score += 1000;
+      // Desempate dentro da mesma severidade: legal/coimas primeiro…
+      if (f.categoria === "legal") score += 100;
+      // …e depois os exploits de segurança.
       if (
         f.id.includes("tls") ||
         f.id.includes("login") ||
         f.id.includes("dmarc") ||
         f.id.includes("exposure")
       ) {
-        score += 500;
+        score += 50;
       }
       return { finding: f, score };
     })
