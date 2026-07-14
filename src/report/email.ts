@@ -9,6 +9,23 @@ import { MAX_PONTOS_COLDCALL } from "./outreach";
  * Duas estratégias: clássica (com relatório) ou cold call (sem anexos).
  */
 
+const SITE = "www.verisaudit.com";
+
+/**
+ * Link da página de boas-vindas com um código único por lead (?r=<domínio>),
+ * para sabermos QUEM abriu a página quando clicam no link do email.
+ */
+function linkWelcome(crawl: CrawlResult): string {
+  let code = "";
+  try {
+    code = new URL(crawl.requestedUrl).hostname.replace(/^www\./, "");
+  } catch {
+    code = "";
+  }
+  const q = code ? `?r=${encodeURIComponent(code)}` : "";
+  return `${SITE}/pt/welcome${q}`;
+}
+
 /**
  * Ordena achados por impacto. A SEVERIDADE manda sempre: um problema crítico
  * aparece antes de qualquer grave, e um grave antes de qualquer médio — para o
@@ -206,7 +223,7 @@ export function gerarEmailOutreach(crawl: CrawlResult, findings: Finding[]): str
     "",
     "Se fizer sentido, estou disponível para uma chamada a explicar o que encontramos e como resolver. Basta responder a este email.",
     "",
-    "Se preferir, preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: www.verisaudit.com/pt/welcome",
+    `Se preferir, preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: ${linkWelcome(crawl)}`,
     "",
     "Com os melhores cumprimentos,",
   ].join("\n");
@@ -248,7 +265,7 @@ export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding
     "",
     "Se pretender receber a versão completa desta auditoria, com todos os pontos identificados e respetivas recomendações, basta responder a este email. Teremos todo o gosto em enviá-la, sem qualquer compromisso.",
     "",
-    "A VERIS é uma empresa especializada em auditoria técnica de websites, segurança informática, conformidade RGPD e análise de desempenho. Preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: www.verisaudit.com/pt/welcome",
+    `A VERIS é uma empresa especializada em auditoria técnica de websites, segurança informática, conformidade RGPD e análise de desempenho. Preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: ${linkWelcome(crawl)}`,
     "",
     "Com os melhores cumprimentos,",
   ].join("\n");
