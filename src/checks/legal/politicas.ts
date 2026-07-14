@@ -26,7 +26,8 @@ const check: RegisteredCheck = {
         id: "legal.politica-privacidade.missing",
         categoria: "legal",
         severidade: "critico",
-        descricao: "Não foi encontrada Política de Privacidade.",
+        descricao:
+          "O website não apresenta uma Política de Privacidade facilmente acessível, o que incumpre o RGPD (Regulamento (UE) 2016/679, arts. 13.º e 14.º, e Lei n.º 58/2019) quanto à informação dos utilizadores sobre o tratamento dos seus dados pessoais.",
         remediacao: ctx.legalRules.remediacao.politicaPrivacidade,
       });
     }
@@ -39,6 +40,19 @@ const check: RegisteredCheck = {
         severidade: "info",
         descricao: "Política de Cookies encontrada.",
         evidencia: `Correspondência: "${cookies.match}"`,
+      });
+    } else if (encontrarPadrao(crawl, r.bannerCookies)) {
+      // Há um banner de consentimento de cookies mas não localizámos uma página
+      // dedicada de "Política de Cookies" — que muitas vezes está integrada na
+      // Política de Privacidade ou é aberta pelo próprio banner. Não é um
+      // incumprimento reportável: seria um falso positivo dizer "não tem cookies"
+      // a um site que visivelmente gere o consentimento. Fica só como nota (info).
+      findings.push({
+        id: "legal.politica-cookies.integrada",
+        categoria: "legal",
+        severidade: "info",
+        descricao:
+          "Banner de consentimento de cookies presente; não foi localizada uma Política de Cookies dedicada (poderá estar integrada na Política de Privacidade).",
       });
     } else {
       findings.push({

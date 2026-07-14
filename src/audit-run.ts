@@ -58,6 +58,22 @@ export async function auditarSite(inputUrl: string, o: OpcoesAuditoria): Promise
       noDns: o.noDns,
     });
 
+    // Site barrado por WAF/desafio anti-bot: não vimos o site real, por isso não
+    // corremos checks nem geramos relatório/email (evita falsos positivos legais).
+    // Fica como "erro" no resumo, o que também o torna inelegível para envio.
+    if (crawlResult.bloqueado) {
+      return {
+        url,
+        finalUrl: crawlResult.finalUrl,
+        ok: false,
+        criticos: 0,
+        altos: 0,
+        medios: 0,
+        info: 0,
+        erro: `Bloqueado (${crawlResult.bloqueado.motivo}) — auditoria não fiável, ignorado`,
+      };
+    }
+
     const detetado = detetarTipoSite(crawlResult);
     const ctx: CheckContext = {
       country: o.country,

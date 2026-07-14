@@ -104,11 +104,21 @@ export interface CrawlResult {
   pathProbes: PathProbe[];
   /** Páginas efetivamente carregadas (a principal + subpáginas seguidas). */
   paginasVisitadas: string[];
+  /** O site processa pagamento online no próprio site (gateway/campos de cartão)? */
+  processaPagamento: boolean;
+  /** Foi alcançada uma página de checkout/pagamento durante o crawl? */
+  checkoutAlcancado: boolean;
   /** Resolução DNS do domínio (segurança de email/domínio). */
   dns: DnsInfo;
   /** Métricas de acessibilidade da página principal. */
   a11y: A11yInfo;
   screenshotPath?: string;
+  /**
+   * Preenchido quando o crawl foi barrado por uma página de desafio/anti-bot
+   * (WAF, DDoS-Guard, Cloudflare…) e NÃO chegámos a ver o site real. Nestes
+   * casos a auditoria é abortada para não gerar falsos positivos.
+   */
+  bloqueado?: { motivo: string };
   /** Erros não-fatais ocorridos durante o crawl. */
   warnings: string[];
 }

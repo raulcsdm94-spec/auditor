@@ -75,6 +75,73 @@ export interface SendMailOptions {
   attachments?: MailAttachment[];
 }
 
+/** Mensagem do inbox (campos que nos interessam para triagem de respostas). */
+export interface GraphMessage {
+  id: string;
+  from: string;
+  subject: string;
+  receivedDateTime: string;
+  bodyPreview: string;
+}
+
+/**
+ * Lê as mensagens mais recentes do inbox da caixa configurada
+ * (GET /users/{mailbox}/mailFolders/inbox/messages). Requer a permissão de
+ * aplicação **Mail.Read** concedida ao registo de app no Azure AD — sem ela o
+ * Graph responde 403. Passivo: só lê, nunca marca como lido nem move nada.
+ */
+export async function listInboxMessages(
+  cfg: GraphConfig,
+  opts: { since?: Date; top?: number } = {}
+): Promise<GraphMessage[]> {
+  const token = await getAccessToken(cfg);
+  const top = Math.min(Math.max(opts.top ?? 100, 1), 1000);
+
+  const params = new URLSearchParams({
+    $select: "id,subject,from,receivedDateTime,bodyPreview",
+    $orderby: "receivedDateTime desc",
+    $top: String(Math.min(top, 50)),
+  });
+  if (opts.since) {
+    params.set("$filter", `receivedDateTime ge ${opts.since.toISOString()}`);
+  }
+
+  const base = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(cfg.mailbox)}/mailFolders/inbox/messages`;
+  let url: string | null = `${base}?${params.toString()}`;
+  const out: GraphMessage[] = [];
+
+  while (url && out.length < top) {
+    const res: Response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      throw new Error(`Falha a ler inbox (${res.status}): ${await res.text()}`);
+    }
+    const json = (await res.json()) as {
+      value: Array<{
+        id: string;
+        subject?: string;
+        from?: { emailAddress?: { address?: string } };
+        receivedDateTime?: string;
+        bodyPreview?: string;
+      }>;
+      "@odata.nextLink"?: string;
+    };
+    for (const m of json.value) {
+      out.push({
+        id: m.id,
+        from: (m.from?.emailAddress?.address || "").toLowerCase(),
+        subject: m.subject || "",
+        receivedDateTime: m.receivedDateTime || "",
+        bodyPreview: m.bodyPreview || "",
+      });
+    }
+    url = json["@odata.nextLink"] || null;
+  }
+
+  return out.slice(0, top);
+}
+
 /** Envia um email via Graph a partir da caixa configurada (POST /users/{mailbox}/sendMail). */
 export async function sendMail(cfg: GraphConfig, opts: SendMailOptions): Promise<void> {
   const token = await getAccessToken(cfg);

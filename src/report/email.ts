@@ -1,6 +1,5 @@
 import { CrawlResult, Finding, Severidade } from "../types";
 import { semTravessoes } from "./client-report";
-import { detetarPerfilNegocio } from "./business-profile";
 import { riscoCliente } from "./risco";
 import { ROTULO_CRITICO, ROTULO_GRAVE, ROTULO_MELHORAR } from "./email-html";
 import { MAX_PONTOS_COLDCALL } from "./outreach";
@@ -10,91 +9,31 @@ import { MAX_PONTOS_COLDCALL } from "./outreach";
  * Duas estratégias: clássica (com relatório) ou cold call (sem anexos).
  */
 
-/** Extrai possível cidade/localização do crawl (address, keywords, etc). Fallback: "sua zona". */
-function extrairLocalizacao(crawl: CrawlResult): string {
-  const texto = (crawl.html + " " + crawl.visibleText).toLowerCase();
-
-  // Procura por endereço em formato comum (Rua, Avenida, etc)
-  const enderecoMatch = texto.match(
-    /(?:rua|avenida|av\.|travessa|largo|praça|alameda|estrada|passagem)\s+([a-záéíóúàâãõç\s]+?),?\s+(?:\d+[a-z]*)?(?:\s*-\s*)?(\d{4}-\d{3}|\d{4}\s*-\s*\d{3})?/i
-  );
-  if (enderecoMatch) {
-    const cp = enderecoMatch[2];
-    if (cp) {
-      const codigoRegiao: Record<string, string> = {
-        "01": "Lisboa",
-        "02": "Porto",
-        "03": "Covilhã",
-        "04": "Castelo Branco",
-        "05": "Guarda",
-        "06": "Leiria",
-        "07": "Aveiro",
-        "08": "Viseu",
-        "09": "Covilhã",
-      };
-      const primeiroDigito = cp.slice(0, 2);
-      if (codigoRegiao[primeiroDigito]) return codigoRegiao[primeiroDigito];
-    }
-  }
-
-  // Procura por palavras-chave geográficas
-  const cidades = [
-    "lisboa",
-    "porto",
-    "covilhã",
-    "braga",
-    "aveiro",
-    "viseu",
-    "guarda",
-    "castelo branco",
-    "leiria",
-    "santarém",
-    "setúbal",
-    "évora",
-    "beja",
-    "faro",
-  ];
-  for (const cidade of cidades) {
-    if (texto.includes(cidade)) return cidade.charAt(0).toUpperCase() + cidade.slice(1);
-  }
-
-  return "sua zona";
-}
-
-/** Extrai categoria de negócio em português amigável (ou "negócios" se desconhecido). */
-function extrairCategoria(crawl: CrawlResult): string {
-  const perfil = detetarPerfilNegocio(crawl);
-  const categoriaMap: Record<string, string> = {
-    alojamento: "alojamentos",
-    restauracao: "restauração",
-    ecommerce: "comércio online",
-    servicos: "serviços",
-    imobiliario: "imobiliário",
-    saude: "clínicas de saúde",
-    automovel: "serviço automóvel",
-    desconhecido: "negócios",
-  };
-  return categoriaMap[perfil.perfil] || "negócios";
-}
-
-/** Ordena achados por impacto: legal/coimas > exploits de segurança > severidade. */
+/**
+ * Ordena achados por impacto. A SEVERIDADE manda sempre: um problema crítico
+ * aparece antes de qualquer grave, e um grave antes de qualquer médio — para o
+ * email (e o seu primeiro ponto) liderar com o mais crítico. Só dentro da mesma
+ * severidade é que desempatamos por incumprimento legal (coimas) e depois por
+ * exploits de segurança.
+ */
 function ordenarPorImpacto(findings: Finding[]): Finding[] {
   return findings
     .map((f) => {
       let score = 0;
-      // Incumprimento legal pesa mais (pode dar origem a coimas).
-      if (f.categoria === "legal") score += 1000;
-      if (f.severidade === "critico") score += 100;
-      if (f.severidade === "alto") score += 50;
-      if (f.severidade === "medio") score += 10;
-      // Exploits de segurança.
+      // Primário: severidade (blocos largos para nunca serem ultrapassados).
+      if (f.severidade === "critico") score += 10000;
+      else if (f.severidade === "alto") score += 5000;
+      else if (f.severidade === "medio") score += 1000;
+      // Desempate dentro da mesma severidade: legal/coimas primeiro…
+      if (f.categoria === "legal") score += 100;
+      // …e depois os exploits de segurança.
       if (
         f.id.includes("tls") ||
         f.id.includes("login") ||
         f.id.includes("dmarc") ||
         f.id.includes("exposure")
       ) {
-        score += 500;
+        score += 50;
       }
       return { finding: f, score };
     })
@@ -138,14 +77,22 @@ function limparDescricao(desc: string): string {
 }
 
 /**
- * Formata um finding para o email: "<Rótulo>: <problema> — <risco>".
- * O rótulo ("Problema Crítico"/…) reflete a severidade e, no HTML, colore o "ball".
+ * Findings cuja descrição já é uma frase completa e informativa; nestes não se
+ * acrescenta a frase de risco, para o ponto não ficar redundante.
+ */
+const IDS_SEM_RISCO_EMAIL = new Set(["legal.politica-privacidade.missing"]);
+
+/**
+ * Formata um finding para o email: "<Rótulo>: <problema>. <risco>".
+ * A transição problema → explicação usa ponto final (e não vírgula) para ser
+ * claramente percetível. O rótulo ("Problema Crítico"/…) reflete a severidade
+ * e, no HTML, colore o "ball".
  */
 function formatarFinding(finding: Finding): string {
   const rotulo = ROTULO_SEVERIDADE[finding.severidade];
   const desc = limparDescricao(finding.descricao).replace(/\.$/, "");
-  const risco = riscoCliente(finding) || "";
-  const corpo = risco ? `${desc} — ${risco}` : desc;
+  const risco = IDS_SEM_RISCO_EMAIL.has(finding.id) ? "" : riscoCliente(finding) || "";
+  const corpo = risco ? `${desc}. ${risco}` : desc;
   return `${rotulo}: ${corpo}`;
 }
 
@@ -179,26 +126,26 @@ function bulletsClassico(crawl: CrawlResult, findings: Finding[]): string[] {
     b.push("Site sem HTTPS (sinal de insegurança para visitantes e para a Google)");
   }
   if (tem(findings, "legal.politica-privacidade.missing")) {
-    b.push("Sem Política de Privacidade (obrigatória no RGPD)");
+    b.push("Sem Política de Privacidade (obrigatória no RGPD, arts. 13.º e 14.º)");
   }
   if (
     tem(findings, "legal.banner-cookies.tracking-sem-consentimento") ||
     tem(findings, "legal.banner-cookies.missing")
   ) {
-    b.push("Cookies de tracking a disparar antes de consentimento (dos pontos mais fiscalizados no RGPD)");
+    b.push("Cookies de tracking a disparar antes de consentimento (viola a Lei n.º 41/2004, art. 5.º, e o RGPD; dos pontos mais fiscalizados)");
   }
   if (tem(findings, "sec.email.dmarc-missing")) {
     b.push("Sem proteção DMARC no email (permite a qualquer pessoa falsificar emails em vosso nome)");
   }
   if (tem(findings, "legal.livro-reclamacoes.missing")) {
-    b.push("Livro de Reclamações eletrónico não encontrado (obrigatório para prestadores de serviços)");
+    b.push("Livro de Reclamações eletrónico não encontrado (obrigatório sob o DL n.º 156/2005, com coima de 150€ a 15.000€)");
   }
   const server = crawl.headers["server"];
   if (server && /\d/.test(server)) {
     b.push(`O servidor revela a versão do software (${server}) (facilita ataques a falhas conhecidas)`);
   }
   if (tem(findings, "legal.politica-cookies.missing")) {
-    b.push("Sem Política de Cookies (exigida pelo RGPD)");
+    b.push("Sem Política de Cookies (exigida pela Lei n.º 41/2004 e pelo RGPD)");
   }
   if (!/<meta[^>]+name=["']viewport["']/i.test(crawl.html)) {
     b.push("Sem viewport para telemóvel (prejudica a leitura em mobile)");
@@ -218,7 +165,7 @@ const CRITICO_FRASE: Record<string, string> = {
   "sec.tls.no-https":
     "Há um ponto que classificámos como crítico e que seria o primeiro a resolver: o site ainda não usa HTTPS, o que hoje é um sinal claro de insegurança para quem visita e vos penaliza na Google.",
   "legal.politica-privacidade.missing":
-    "Há um ponto que classificámos como crítico e que seria o primeiro a resolver: a ausência de Política de Privacidade, que é uma obrigação central do RGPD.",
+    "Há um ponto que classificámos como crítico e que seria o primeiro a resolver: a ausência de Política de Privacidade, que é uma obrigação central do RGPD (Regulamento (UE) 2016/679, arts. 13.º e 14.º).",
   "sec.tls.cert-expirado":
     "Há um ponto que classificámos como crítico e que seria o primeiro a resolver: o certificado de segurança do site está expirado, o que faz os browsers mostrarem avisos de perigo aos visitantes.",
 };
@@ -259,6 +206,8 @@ export function gerarEmailOutreach(crawl: CrawlResult, findings: Finding[]): str
     "",
     "Se fizer sentido, estou disponível para uma chamada a explicar o que encontramos e como resolver. Basta responder a este email.",
     "",
+    "Se preferir, preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: www.verisaudit.com/pt/welcome",
+    "",
     "Com os melhores cumprimentos,",
   ].join("\n");
 
@@ -271,8 +220,6 @@ export function gerarEmailOutreach(crawl: CrawlResult, findings: Finding[]): str
  */
 export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding[]): string {
   const url = crawl.requestedUrl;
-  const localizacao = extrairLocalizacao(crawl);
-  const categoria = extrairCategoria(crawl);
   const topPontos = pontosColdCall(findings);
   const serio = temProblemaSerio(findings);
 
@@ -291,7 +238,7 @@ export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding
     "",
     "O meu nome é Raul Dantas e sou analista de segurança da VERIS.",
     "",
-    `Esta semana estivemos a analisar alguns websites de ${categoria} em ${localizacao} e o ${url} foi um deles.`,
+    `Esta semana estivemos a analisar alguns websites de negócios na sua região e o ${url} foi um deles.`,
     "",
     "Durante essa auditoria identificámos alguns pontos que consideramos relevantes e que poderão merecer atenção:",
     "",
@@ -301,7 +248,7 @@ export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding
     "",
     "Se pretender receber a versão completa desta auditoria, com todos os pontos identificados e respetivas recomendações, basta responder a este email. Teremos todo o gosto em enviá-la, sem qualquer compromisso.",
     "",
-    "A VERIS é uma empresa especializada em auditoria técnica de websites, segurança informática, conformidade RGPD e análise de desempenho. Pode conhecer melhor o nosso trabalho em www.verisaudit.com.",
+    "A VERIS é uma empresa especializada em auditoria técnica de websites, segurança informática, conformidade RGPD e análise de desempenho. Preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: www.verisaudit.com/pt/welcome",
     "",
     "Com os melhores cumprimentos,",
   ].join("\n");

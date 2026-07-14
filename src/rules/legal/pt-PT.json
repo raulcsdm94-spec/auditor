@@ -103,7 +103,7 @@
     "bannerCookies": "Apresentar um banner de consentimento de cookies antes de definir cookies não essenciais.",
     "rejeitarCookies": "O banner deve permitir rejeitar cookies não essenciais com a mesma facilidade com que permite aceitar (CNPD).",
     "infoEmpresa": "Apresentar a identificação completa da empresa (nome legal, sede, contactos) de forma visível, nos termos do DL 7/2004 (comércio eletrónico).",
-    "identificadorFiscal": "Indicar o NIPC/NIF da entidade, exigido na informação obrigatória de prestadores.",
+    "identificadorFiscal": "Indicar o NIPC/NIF da entidade no site, obrigação legal das empresas (art. 171.º do Código das Sociedades Comerciais e DL 7/2004, art. 10.º).",
     "direitoRetratacao": "Informar sobre o direito de livre resolução de 14 dias nas vendas à distância (DL 24/2014).",
     "politicaReembolso": "Disponibilizar política de devoluções/reembolsos clara e acessível.",
     "termosCancelamento": "Apresentar os termos de cancelamento de forma clara antes da confirmação do pagamento."

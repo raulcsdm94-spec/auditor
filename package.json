@@ -14,6 +14,8 @@
     "audit:prod": "node dist/cli.js",
     "drafts": "ts-node src/make-drafts.ts",
     "send": "ts-node src/send.ts",
+    "inbox": "ts-node src/inbox.ts",
+    "leads": "ts-node src/import-leads.ts",
     "automail": "ts-node src/auto-mail.ts",
     "postinstall": "playwright install chromium",
     "lint": "tsc --noEmit"
