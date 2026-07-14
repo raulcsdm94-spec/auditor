@@ -1,5 +1,5 @@
 import { RegisteredCheck, Finding } from "../../types";
-import { encontrarPadrao } from "./_shared";
+import { detetarBannerCookies, encontrarPadrao } from "./_shared";
 
 /**
  * Verifica a presença de Política de Privacidade e Política de Cookies.
@@ -41,7 +41,7 @@ const check: RegisteredCheck = {
         descricao: "Política de Cookies encontrada.",
         evidencia: `Correspondência: "${cookies.match}"`,
       });
-    } else if (encontrarPadrao(crawl, r.bannerCookies)) {
+    } else if (detetarBannerCookies(crawl, r.bannerCookies)) {
       // Há um banner de consentimento de cookies mas não localizámos uma página
       // dedicada de "Política de Cookies" — que muitas vezes está integrada na
       // Política de Privacidade ou é aberta pelo próprio banner. Não é um

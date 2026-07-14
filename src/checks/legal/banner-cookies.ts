@@ -1,5 +1,5 @@
 import { RegisteredCheck, Finding } from "../../types";
-import { encontrarPadrao } from "./_shared";
+import { detetarBannerCookies, encontrarPadrao } from "./_shared";
 
 /**
  * Verifica se existe um banner de cookies e se este oferece uma opção real
@@ -14,7 +14,7 @@ const check: RegisteredCheck = {
     const findings: Finding[] = [];
     const r = ctx.legalRules.patterns;
 
-    const banner = encontrarPadrao(crawl, r.bannerCookies);
+    const banner = detetarBannerCookies(crawl, r.bannerCookies);
     const rejeitar = encontrarPadrao(crawl, r.rejeitarCookies);
 
     if (!banner) {

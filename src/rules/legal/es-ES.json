@@ -24,23 +24,37 @@
       "uso de cookies"
     ],
     "bannerCookies": [
-      "este sitio utiliza cookies",
+      "sitio utiliza cookies",
+      "sitio usa cookies",
+      "web utiliza cookies",
+      "web usa cookies",
+      "utilizacion de cookies",
       "utilizamos cookies",
       "usamos cookies",
+      "acepta el uso de cookies",
       "aceptar cookies",
       "aceptar todas",
       "gestionar cookies",
+      "gestion de cookies",
       "consentimiento de cookies",
-      "we use cookies"
+      "al continuar navegando",
+      "seguir navegando",
+      "we use cookies",
+      "this website uses cookies",
+      "this site uses cookies"
     ],
     "rejeitarCookies": [
       "rechazar",
       "rechazar todas",
+      "rechazar cookies",
       "denegar",
+      "no acepto",
       "solo esenciales",
       "sólo esenciales",
-      "configurar",
+      "solo las necesarias",
+      "solamente las necesarias",
       "reject",
+      "reject all",
       "decline"
     ],
     "infoEmpresa": [
