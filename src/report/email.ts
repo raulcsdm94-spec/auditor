@@ -206,6 +206,8 @@ export function gerarEmailOutreach(crawl: CrawlResult, findings: Finding[]): str
     "",
     "Se fizer sentido, estou disponível para uma chamada a explicar o que encontramos e como resolver. Basta responder a este email.",
     "",
+    "Se preferir, preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: www.verisaudit.com/pt/welcome",
+    "",
     "Com os melhores cumprimentos,",
   ].join("\n");
 
@@ -246,7 +248,7 @@ export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding
     "",
     "Se pretender receber a versão completa desta auditoria, com todos os pontos identificados e respetivas recomendações, basta responder a este email. Teremos todo o gosto em enviá-la, sem qualquer compromisso.",
     "",
-    "A VERIS é uma empresa especializada em auditoria técnica de websites, segurança informática, conformidade RGPD e análise de desempenho. Pode conhecer melhor o nosso trabalho em www.verisaudit.com.",
+    "A VERIS é uma empresa especializada em auditoria técnica de websites, segurança informática, conformidade RGPD e análise de desempenho. Preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: www.verisaudit.com/pt/welcome",
     "",
     "Com os melhores cumprimentos,",
   ].join("\n");

@@ -4,8 +4,9 @@ import * as path from "path";
 import { Command } from "commander";
 import { parseCsv } from "./inputs";
 import { parseEmailFile } from "./report/parse-email-file";
-import { ASSINATURA } from "./report/signature";
+import { ASSINATURA, OPT_OUT } from "./report/signature";
 import { valeAPenaContactar } from "./report/outreach";
+import { carregarSupressao, estaSuprimido } from "./report/suppression";
 
 /**
  * Cria um ficheiro .eml por lead a partir do resultado de uma auditoria em
@@ -33,7 +34,7 @@ function wrap76(b64: string): string {
 /** Constrói o conteúdo MIME de um .eml (corpo texto + PDF anexado opcionalmente). */
 function construirEml(to: string, subject: string, body: string, pdfPath?: string): string {
   const boundary = "veris_" + Math.random().toString(36).slice(2);
-  const corpo = body + "\n\n" + ASSINATURA.join("\n") + "\n";
+  const corpo = body + "\n\n" + ASSINATURA.join("\n") + "\n\n" + OPT_OUT + "\n";
   const corpoB64 = wrap76(Buffer.from(corpo, "utf-8").toString("base64"));
 
   if (!pdfPath) {
@@ -139,8 +140,11 @@ function main() {
   const outbox = path.join(outDir, "_outbox");
   fs.mkdirSync(outbox, { recursive: true });
 
+  const supressao = carregarSupressao(outDir);
+
   let feitos = 0;
   let naoElegiveis = 0;
+  let suprimidos = 0;
   const semEmail: string[] = [];
   const semFicheiros: string[] = [];
 
@@ -163,6 +167,11 @@ function main() {
       semEmail.push(url);
       continue;
     }
+    // Opt-out: nunca gerar rascunho para quem está na lista de supressão.
+    if (estaSuprimido(supressao, url, email)) {
+      suprimidos++;
+      continue;
+    }
     // O PDF só é necessário no clássico (é o anexo). O cold call é só o email.
     const precisaPdf = strategy === "classico";
     if (!emailFile || !fs.existsSync(emailFile) || (precisaPdf && (!pdf || !fs.existsSync(pdf)))) {
@@ -181,6 +190,9 @@ function main() {
   console.log(`✔ ${feitos} rascunho(s) .eml criados (estratégia: ${strategyLabel}) em:\n  ${outbox}\n`);
   if (naoElegiveis) {
     console.log(`  ${naoElegiveis} saltado(s) por elegibilidade (sem problemas sérios; usa --incluir-todos para incluir).`);
+  }
+  if (suprimidos) {
+    console.log(`  ${suprimidos} saltado(s) por opt-out (lista de supressão _supressao.txt).`);
   }
   if (semEmail.length) {
     console.log(`  ${semEmail.length} sem email (ignorados): ${semEmail.slice(0, 5).join(", ")}${semEmail.length > 5 ? "…" : ""}`);

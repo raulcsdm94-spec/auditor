@@ -1,0 +1,14 @@
+# Lista de supressão (opt-out) — negócios a NUNCA contactar.
+# Uma entrada por linha. Tudo depois de '#' é comentário.
+#
+# Quando alguém responde a pedir para sair ("remover"), acrescenta aqui a linha
+# e o envio (send.ts / make-drafts.ts) deixa de o incluir para sempre — mesmo
+# que o site volte a aparecer no leads.csv.
+#
+# Formatos aceites:
+#   info@exemplo.pt     ← email exato
+#   exemplo.pt          ← domínio inteiro (qualquer email @exemplo.pt e o próprio site)
+#
+# Exemplos (apaga estas linhas ou deixa-as; começam por '#', logo são ignoradas):
+# geral@naoquerem.pt
+# outrodominio.com

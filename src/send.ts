@@ -6,6 +6,7 @@ import { parseCsv } from "./inputs";
 import { parseEmailFile } from "./report/parse-email-file";
 import { buildEmailHtml, LOGO_CID } from "./report/email-html";
 import { valeAPenaContactar, MOTIVO_NAO_ELEGIVEL } from "./report/outreach";
+import { carregarSupressao, estaSuprimido } from "./report/suppression";
 import { loadGraphConfig, sendMail } from "./graph/mail";
 import { loadEnv } from "./env";
 
@@ -66,6 +67,18 @@ function enviadosHoje(log: SentLog): number {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Extrai as linhas de "ponto" (bullets •/●) do corpo de um email, sem o marcador
+ * nem a indentação. Servem para o dry-run mostrar exatamente o que cada email
+ * afirma — é o momento barato para apanhar um falso positivo antes de enviar.
+ */
+function extrairPontos(body: string): string[] {
+  return body
+    .split(/\r?\n/)
+    .map((l) => l.match(/^\s*[•●]\s?(.*)$/)?.[1]?.trim())
+    .filter((p): p is string => !!p);
 }
 
 interface ResultRow {
@@ -138,6 +151,11 @@ async function main() {
   const log = lerSentLog(logPath);
   let jaHoje = enviadosHoje(log);
 
+  const supressao = carregarSupressao(outDir);
+  if (supressao.tamanho > 0) {
+    console.log(`🚫 Lista de supressão: ${supressao.tamanho} entrada(s) — nunca contactadas.\n`);
+  }
+
   const rows = parseCsv(fs.readFileSync(resumoPath, "utf-8"));
   const header = rows[0].map((h) => h.trim().toLowerCase());
   const col = (name: string) => header.indexOf(name);
@@ -164,6 +182,7 @@ async function main() {
   let semFicheiros = 0;
   let saltadosCap = 0;
   let saltadosElegibilidade = 0;
+  let saltadosSupressao = 0;
   let processados = 0;
   let enviados = 0;
   let falhados = 0;
@@ -187,6 +206,11 @@ async function main() {
     }
     if (!email) {
       semEmail++;
+      continue;
+    }
+    // Opt-out: nunca contactar quem está na lista de supressão (mesmo com --incluir-todos).
+    if (estaSuprimido(supressao, url, email)) {
+      saltadosSupressao++;
       continue;
     }
     const precisa_pdf = strategy === "classico";
@@ -225,6 +249,9 @@ async function main() {
         infoAnexo = " | sem anexo (cold call)";
       }
       console.log(`[dry-run] → ${email} | "${subject}"${infoAnexo}`);
+      for (const ponto of extrairPontos(body)) {
+        console.log(`            • ${ponto}`);
+      }
       wouldSend.push({ url, email, estado: "dry-run", sentAt: "", erro: "" });
       continue;
     }
@@ -271,6 +298,7 @@ async function main() {
     `\n${opts.send ? "Envio" : "Dry-run"} concluído: ${opts.send ? enviados + " enviados" : wouldSend.length + " enviaria(m)"}` +
       `${falhados ? `, ${falhados} falhado(s)` : ""}, ${jaEnviados} já enviados antes (saltados), ` +
       `${saltadosElegibilidade} saltados por elegibilidade (${MOTIVO_NAO_ELEGIVEL}), ` +
+      `${saltadosSupressao} saltados por opt-out (lista de supressão), ` +
       `${saltadosCap} saltados por limite diário, ${semEmail} sem email, ${semFicheiros} sem PDF/email-outreach.`
   );
   if (!opts.send) {
