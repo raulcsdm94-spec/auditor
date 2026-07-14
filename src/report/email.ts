@@ -253,11 +253,9 @@ export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding
   const corpo = [
     "Boa tarde,",
     "",
-    "O meu nome é Raul Dantas e sou analista de segurança da VERIS.",
+    "O meu nome é Raul Dantas sou analista de segurança da VERIS.",
     "",
-    `Esta semana estivemos a analisar alguns websites de negócios na sua região e o ${url} foi um deles.`,
-    "",
-    "Durante essa auditoria identificámos alguns pontos que consideramos relevantes e que poderão merecer atenção:",
+    `Estivemos a analisar o seu website ${url} e identificámos alguns pontos que consideramos relevantes e que poderão merecer atenção:`,
     "",
     pontos,
     "",
