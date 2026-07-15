@@ -4,6 +4,8 @@ import * as path from "path";
 import { spawnSync } from "child_process";
 import { Command } from "commander";
 import { lerCsv } from "./inputs";
+import { loadEnv } from "./env";
+import { pullLeadsSheet } from "./leads-sheet";
 
 /**
  * Pipeline "uma pasta, um comando": lê o CSV (websites,emails) que está na
@@ -33,6 +35,7 @@ interface AutoOpts {
   strategy?: string;
   incluirTodos: boolean;
   sync: boolean;
+  pullLeads: boolean;
 }
 
 /** Encontra o CSV de leads na pasta (ignora os ficheiros gerados com prefixo _). */
@@ -61,11 +64,10 @@ function correr(bin: string, args: string[]): number {
  * faz o pipeline falhar). `comFicheiros=false` no sync pós-envio, que só precisa
  * de virar o "Email enviado" (os ficheiros já subiram na fase de auditoria).
  */
-function sincronizar(reportsDir: string, strategy: string | undefined, comFicheiros: boolean): void {
+function sincronizar(reportsDir: string, comFicheiros: boolean): void {
   const syncArgs = [
     path.join(AUDITOR_DIR, "src", "sync-sheet.ts"),
     "--out", reportsDir,
-    "--strategy", strategy || "classico",
   ];
   if (!comFicheiros) syncArgs.push("--no-files");
   const codigo = correr(TS_NODE, syncArgs);
@@ -74,7 +76,8 @@ function sincronizar(reportsDir: string, strategy: string | undefined, comFichei
   }
 }
 
-function main() {
+async function main() {
+  loadEnv();
   const program = new Command();
   program
     .name("veris-automail")
@@ -93,11 +96,25 @@ function main() {
     .option("--strategy <tipo>", "estratégia de email: 'classico' (com relatório) ou 'coldcall' (sem anexo)")
     .option("--incluir-todos", "envia mesmo para sites sem problemas sérios (ignora a regra de elegibilidade)", false)
     .option("--no-sync", "não sincroniza com a Google Sheet partilhada (por omissão sincroniza se o webhook estiver configurado)")
+    .option("--no-pull-leads", "não puxa a folha de leads partilhada (por omissão puxa se LEADS_SHEET_ID estiver no .env)")
     .parse(process.argv);
   const opts = program.opts<AutoOpts>();
 
   const dir = path.resolve(process.cwd(), opts.dir);
   fs.mkdirSync(dir, { recursive: true });
+
+  // 0) Puxa a folha de leads partilhada → leads.csv (se LEADS_SHEET_ID no .env).
+  // Assim tu/o cofundador adicionam leads na folha e o run apanha-os. Só corre
+  // quando não é passado um --csv específico. Best-effort: se falhar, continua
+  // com o leads.csv que já existir.
+  if (opts.pullLeads && !opts.csv) {
+    try {
+      const n = await pullLeadsSheet(path.join(dir, "leads.csv"));
+      if (n !== null) console.log(`🔄 Folha de leads → leads.csv: ${n} lead(s) da Google Sheet.\n`);
+    } catch (e) {
+      console.error(`⚠️  Não consegui puxar a folha de leads (${(e as Error).message}). Uso o leads.csv local.\n`);
+    }
+  }
 
   let csv = opts.csv ? path.resolve(process.cwd(), opts.csv) : null;
   if (!csv) {
@@ -174,7 +191,7 @@ function main() {
   // para o cofundador poder rever os emails antes do envio.
   if (opts.sync) {
     console.log("\n═══ Sincronização com a folha partilhada ═══\n");
-    sincronizar(reportsDir, opts.strategy, true);
+    sincronizar(reportsDir, true);
   }
 
   // 2) Envio (dry-run por omissão; só envia mesmo com --send).
@@ -193,10 +210,13 @@ function main() {
   // virar o "Email enviado" → Sim na folha partilhada.
   if (opts.sync && opts.send && codigoSend === 0) {
     console.log("\n═══ Atualização do estado de envio na folha partilhada ═══\n");
-    sincronizar(reportsDir, opts.strategy, false);
+    sincronizar(reportsDir, false);
   }
 
   process.exitCode = codigoSend;
 }
 
-main();
+main().catch((e) => {
+  console.error(`✖ Erro inesperado: ${(e as Error).message}`);
+  process.exitCode = 1;
+});

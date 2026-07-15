@@ -4,8 +4,6 @@ import * as path from "path";
 import { Command } from "commander";
 import { parseCsv } from "./inputs";
 import { parseEmailFile } from "./report/parse-email-file";
-import { valeAPenaContactar } from "./report/outreach";
-import { carregarSupressao, estaSuprimido, Supressao } from "./report/suppression";
 import { loadEnv } from "./env";
 
 /**
@@ -27,7 +25,6 @@ import { loadEnv } from "./env";
 
 interface SyncOpts {
   out: string;
-  strategy: string;
   only?: string;
   files: boolean;
   screenshot: boolean;
@@ -104,28 +101,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * "Pronto a enviar?" — usa EXATAMENTE a mesma lógica do send.ts, para a folha
- * dizer a verdade sobre o que sairia num `--send` real. Devolve "Sim" ou
- * "Não (motivo)".
- */
-function prontoParaEnviar(
-  sup: Supressao,
-  estado: string,
-  criticos: number,
-  altos: number,
-  email: string,
-  url: string,
-  jaEnviado: boolean
-): string {
-  if (jaEnviado) return "Não (já enviado)";
-  if (estado !== "ok") return `Não (auditoria: ${estado || "erro"})`;
-  if (!email) return "Não (sem email)";
-  if (estaSuprimido(sup, url, email)) return "Não (opt-out)";
-  if (!valeAPenaContactar(criticos, altos)) return "Não (sem problemas sérios)";
-  return "Sim";
-}
-
 async function main() {
   loadEnv();
 
@@ -134,16 +109,13 @@ async function main() {
     .name("veris-sync")
     .description("Espelha o resumo das auditorias numa Google Sheet partilhada (com ficheiros no Drive).")
     .option("--out <dir>", "pasta dos relatórios (onde está o _resumo-auditorias.csv)", "reports")
-    .option("--strategy <tipo>", "email a mostrar na folha: 'classico' (outreach) ou 'coldcall'", "classico")
     .option("--only <texto>", "sincroniza só os leads cujo URL contém este texto")
-    .option("--no-files", "não carrega ficheiros para o Drive (só atualiza contagens/estado/enviado)")
+    .option("--no-files", "não carrega ficheiros para o Drive (só atualiza o email enviado)")
     .option("--no-screenshot", "carrega PDFs mas salta o screenshot (payload mais leve)")
     .option("--dry-run", "mostra o que seria sincronizado, sem enviar nada", false)
     .option("--limit <n>", "sincroniza no máximo N leads")
     .parse(process.argv);
   const opts = program.opts<SyncOpts>();
-
-  const strategy = (opts.strategy || "classico").toLowerCase() === "coldcall" ? "coldcall" : "classico";
 
   const outDir = path.resolve(process.cwd(), opts.out);
   const resumoPath = path.join(outDir, "_resumo-auditorias.csv");
@@ -163,17 +135,12 @@ async function main() {
   }
 
   const log = lerSentLog(path.join(outDir, "_sent-log.json"));
-  const supressao = carregarSupressao(outDir);
 
   const rows = parseCsv(fs.readFileSync(resumoPath, "utf-8"));
   const header = rows[0].map((h) => h.trim().toLowerCase());
   const col = (name: string) => header.indexOf(name);
   const iUrl = col("url");
   const iUrlFinal = col("url_final");
-  const iEstado = col("estado");
-  const iCriticos = col("criticos");
-  const iAltos = col("altos");
-  const iMedios = col("medios");
   const iEmail = col("email");
   const iPasta = col("pasta");
   const iPdf = col("relatorio_cliente_pdf");
@@ -197,7 +164,6 @@ async function main() {
     if (processados >= limit) break;
     processados++;
 
-    const estado = iEstado >= 0 ? (row[iEstado] || "").trim() : "";
     const pasta = iPasta >= 0 ? (row[iPasta] || "").trim() : "";
     const emailFile = iEmailFile >= 0 ? (row[iEmailFile] || "").trim() : "";
     const pdf = iPdf >= 0 ? (row[iPdf] || "").trim() : "";
@@ -229,22 +195,14 @@ async function main() {
 
     const dataAudit = pasta && fs.existsSync(pasta) ? dataPt(fs.statSync(pasta).mtime) : dataPt(new Date());
     const email = iEmail >= 0 ? (row[iEmail] || "").trim() : "";
-    const criticos = iCriticos >= 0 ? parseInt(row[iCriticos] || "0", 10) || 0 : 0;
-    const altos = iAltos >= 0 ? parseInt(row[iAltos] || "0", 10) || 0 : 0;
 
     const payload: Record<string, unknown> = {
       lead: dominio(url),
       url: (row[iUrlFinal] || url).trim() || url,
       data: dataAudit,
-      estado: estado || "—",
-      criticos,
-      altos,
-      medios: iMedios >= 0 ? parseInt(row[iMedios] || "0", 10) || 0 : 0,
       email,
-      estrategia: strategy,
       assunto,
       emailTexto,
-      prontoEnviar: prontoParaEnviar(supressao, estado, criticos, altos, email, url, !!enviado),
       emailEnviado: enviado ? "Sim" : "Não",
       dataEnvio: enviado ? dataPt(new Date(enviado.sentAt)) : "",
       notas: erro ? `Erro: ${erro}` : "",
@@ -254,8 +212,7 @@ async function main() {
     const nFich = ficheiros.length;
     if (opts.dryRun) {
       console.log(
-        `[dry-run] ${payload.lead} | estado=${payload.estado} | C${payload.criticos}/A${payload.altos}/M${payload.medios}` +
-          ` | pronto=${payload.prontoEnviar} | enviado=${payload.emailEnviado} | ${nFich} ficheiro(s) | assunto="${assunto}"`
+        `[dry-run] ${payload.lead} | enviado=${payload.emailEnviado} | ${nFich} ficheiro(s) | assunto="${assunto}"`
       );
       ok++;
       continue;

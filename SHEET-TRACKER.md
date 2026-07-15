@@ -6,6 +6,20 @@ o sync sobe os ficheiros (PDF do cliente, relatório completo, screenshot) para
 uma **pasta partilhada do Drive** e escreve uma linha com contagens, o texto do
 email (para rever) e **links clicáveis** — sem paths `/Users/...`.
 
+## Folha de leads partilhada (entrada)
+
+Os leads vêm de uma **Google Sheet partilhada** (`LEADS_SHEET_ID` no `.env`) — tu e o
+cofundador adicionam linhas (`websites,emails`) na folha e o `npm run automail`
+apanha-as automaticamente (puxa a folha → `leads.csv` antes de auditar). A folha tem
+de estar **partilhada como "qualquer pessoa com o link: Leitor"** (ou Ficheiro →
+Publicar na Web) para o export CSV funcionar sem login.
+
+- ⚠️ O `leads.csv` local passa a ser um **espelho da folha** — é reescrito a cada run,
+  por isso edita os leads **na folha**, não no ficheiro.
+- Puxar à mão (para testar): `npm run pull-leads`. Saltar o pull num run: `--no-pull-leads`.
+- Já-contactados e opt-outs continuam a ser saltados no envio (via `_sent-log.json` /
+  `_supressao.txt`), por isso podes deixar leads antigos na folha sem risco de duplicar.
+
 ## Fluxo de trabalho
 
 1. `npm run automail --strategy coldcall` → audita + preview + **sincroniza a folha** (com ficheiros).
