@@ -16,6 +16,7 @@
     "send": "ts-node src/send.ts",
     "inbox": "ts-node src/inbox.ts",
     "leads": "ts-node src/import-leads.ts",
+    "sync": "ts-node src/sync-sheet.ts",
     "automail": "ts-node src/auto-mail.ts",
     "postinstall": "playwright install chromium",
     "lint": "tsc --noEmit"
