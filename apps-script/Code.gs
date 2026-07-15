@@ -40,8 +40,12 @@ var HEADERS = [
   "Notas",                   // 11 K
 ];
 
+// Bump este marcador sempre que mudares o layout, para confirmar (via GET) que
+// o deployment está mesmo a servir o código novo.
+var VERSION = "cols11-2026-07-15";
+
 function doGet() {
-  return json_({ ok: true, service: "veris-tracker" });
+  return json_({ ok: true, service: "veris-tracker", version: VERSION });
 }
 
 function doPost(e) {
