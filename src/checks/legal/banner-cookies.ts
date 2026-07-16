@@ -1,5 +1,5 @@
 import { RegisteredCheck, Finding } from "../../types";
-import { detetarBannerCookies, encontrarPadrao } from "./_shared";
+import { detetarBannerCookies, encontrarRejeicaoCookies } from "./_shared";
 
 /**
  * Verifica se existe um banner de cookies e se este oferece uma opção real
@@ -15,7 +15,9 @@ const check: RegisteredCheck = {
     const r = ctx.legalRules.patterns;
 
     const banner = detetarBannerCookies(crawl, r.bannerCookies);
-    const rejeitar = encontrarPadrao(crawl, r.rejeitarCookies);
+    // A rejeição tem de ser uma AÇÃO clicável (botão/link), não uma menção no
+    // texto do banner ou da política — ver encontrarRejeicaoCookies.
+    const rejeitar = encontrarRejeicaoCookies(crawl, r.rejeitarCookies);
 
     if (!banner) {
       findings.push({
@@ -32,7 +34,7 @@ const check: RegisteredCheck = {
         severidade: "alto",
         descricao:
           "Banner de cookies presente, mas sem opção clara de rejeitar (apenas aceitar).",
-        evidencia: `Banner detetado por "${banner.match}"; nenhuma opção de rejeição encontrada.`,
+        evidencia: `Banner detetado por "${banner.match}"; nenhum botão/link de rejeição encontrado entre os elementos clicáveis.`,
         remediacao: ctx.legalRules.remediacao.rejeitarCookies,
       });
     } else {
@@ -41,13 +43,20 @@ const check: RegisteredCheck = {
         categoria: "legal",
         severidade: "info",
         descricao: "Banner de cookies com opção de aceitar e de rejeitar encontrado.",
-        evidencia: `Banner: "${banner.match}"; Rejeição: "${rejeitar.match}"`,
+        evidencia: `Banner: "${banner.match}"; Rejeição: "${rejeitar.match}"${
+          rejeitar.elemento ? ` (botão/link "${rejeitar.elemento}")` : ""
+        }`,
       });
     }
 
-    // Cookies não essenciais definidos no carregamento inicial (heurística)
+    // Cookies não essenciais definidos no carregamento inicial (heurística).
+    // "fr" e "sid" (cookies da Meta e genéricos de sessão de tracking) só como
+    // nome exato/segmento — como substring apanhavam nomes inocentes. "sbjs_"
+    // é o Sourcebuster (atribuição de marketing do WooCommerce), não essencial.
     const naoEssenciais = crawl.cookies.filter((c) =>
-      /_ga|_gid|_fbp|_gcl|fr|sid|analytics|doubleclick|hubspot/i.test(c.name)
+      /_ga|_gid|_fbp|_gcl|^fr$|(^|_)sid$|sbjs_|analytics|doubleclick|hubspot|visitor_info|^ysc$/i.test(
+        c.name
+      )
     );
     if (naoEssenciais.length > 0) {
       findings.push({

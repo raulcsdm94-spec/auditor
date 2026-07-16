@@ -73,7 +73,38 @@ function pontosColdCall(findings: Finding[]): Finding[] {
   const base = serios.length
     ? serios
     : ordenarPorImpacto(findings.filter((f) => f.severidade === "medio"));
-  return base.slice(0, MAX_PONTOS_COLDCALL);
+  return diversificarPorFamilia(base, MAX_PONTOS_COLDCALL);
+}
+
+/**
+ * Escolhe até `max` pontos VARIADOS: primeiro o melhor de cada família de
+ * checks (ex. "sec.cookies", "legal.banner-cookies"), e só depois segundos da
+ * mesma família se sobrarem vagas. Evita emails em que os 4 pontos são o mesmo
+ * problema repetido (caso casadoavohoracio.pt: 4× cookies com flags fracas),
+ * que parecem gerados automaticamente e perdem credibilidade.
+ */
+function diversificarPorFamilia(ordenados: Finding[], max: number): Finding[] {
+  const porFamilia = new Map<string, Finding[]>();
+  for (const f of ordenados) {
+    const fam = f.id.split(".").slice(0, 2).join(".");
+    const lista = porFamilia.get(fam);
+    if (lista) lista.push(f);
+    else porFamilia.set(fam, [f]);
+  }
+  const escolhidos: Finding[] = [];
+  for (let ronda = 0; escolhidos.length < max; ronda++) {
+    let acrescentou = false;
+    for (const lista of porFamilia.values()) {
+      const f = lista[ronda];
+      if (!f) continue;
+      escolhidos.push(f);
+      acrescentou = true;
+      if (escolhidos.length >= max) break;
+    }
+    if (!acrescentou) break;
+  }
+  // Reordenar por impacto para o email continuar a liderar com o mais grave.
+  return ordenarPorImpacto(escolhidos);
 }
 
 /** Rótulo curto por severidade, prefixado a cada ponto (dá também a cor do "ball" no HTML). */

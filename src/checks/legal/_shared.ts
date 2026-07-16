@@ -1,7 +1,7 @@
 import { CrawlResult } from "../../types";
 
 /** Remove acentos/diacríticos ("política" → "politica", "utilização" → "utilizacao"). */
-function semAcentos(s: string): string {
+export function semAcentos(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 
@@ -64,7 +64,47 @@ const ASSINATURAS_CMP: { nome: string; re: RegExp }[] = [
   { nome: "tarteaucitron", re: /tarteaucitron/i },
   { nome: "Klaro", re: /klaro-cookie|klaro!/i },
   { nome: "Moove GDPR", re: /moove_gdpr|moove-gdpr/i },
+  // Banner nativo do Squarespace: o contexto estático da página declara
+  // explicitamente se o banner está ativo. Sem esta assinatura, um site
+  // Squarespace com banner em texto não listado (ex.: "Selecione Aceitar
+  // tudo…") era dado, erradamente, como "sem banner" (caso hyggeandhealthy.pt).
+  { nome: "Squarespace", re: /"isCookieBannerEnabled"\s*:\s*true|sqs-cookie-banner/i },
+  // Banners nativos de outros construtores de sites comuns, para não repetir
+  // o caso hyggeandhealthy noutras plataformas.
+  { nome: "Wix", re: /consentPolicyManager|consent-banner-root/i },
+  { nome: "Shopify", re: /shopify-pc__banner/i },
+  { nome: "CookieScript", re: /cookiescript/i },
+  { nome: "Didomi", re: /didomi-host|didomi\.io/i },
+  { nome: "Axeptio", re: /axeptio/i },
+  { nome: "Finsweet Cookie Consent", re: /fs-cc-|fs-cc=/i },
 ];
+
+/**
+ * Classes/atributos dos botões de REJEITAR das CMPs conhecidas. São um sinal
+ * de rejeição independente da LÍNGUA do rótulo: um botão Complianz
+ * "cmplz-deny" é uma opção de rejeitar quer diga "Negar", "Rechazar" ou
+ * qualquer outro texto que não esteja na nossa lista de padrões.
+ */
+const ASSINATURAS_BOTAO_REJEITAR: { nome: string; re: RegExp }[] = [
+  { nome: "Complianz", re: /cmplz-deny/i },
+  { nome: "CookieYes", re: /cky-btn-reject|cli-reject-btn|cookie_action_close_header_reject/i },
+  { nome: "OneTrust", re: /onetrust-reject-all-handler|ot-pc-refuse-all-handler/i },
+  { nome: "Cookiebot", re: /CybotCookiebotDialogBodyButtonDecline/i },
+  { nome: "Osano cookieconsent", re: /cc-deny/i },
+  { nome: "tarteaucitron", re: /tarteaucitronAllDenied/i },
+  { nome: "Klaro", re: /cm-btn-decline|cn-decline/i },
+  { nome: "Iubenda", re: /iubenda-cs-reject-btn/i },
+  { nome: "Didomi", re: /didomi-continue-without-agreeing|button--decline/i },
+  { nome: "Squarespace", re: /sqs-cookie-banner-v2-optOut/i },
+];
+
+/** Deteta um botão de rejeitar de uma CMP conhecida pela sua classe no HTML. */
+export function detetarBotaoRejeitarCMP(crawl: CrawlResult): { nome: string } | null {
+  for (const s of ASSINATURAS_BOTAO_REJEITAR) {
+    if (s.re.test(crawl.html)) return { nome: s.nome };
+  }
+  return null;
+}
 
 /** Deteta uma CMP conhecida pela sua assinatura no HTML. */
 export function detetarCMP(crawl: CrawlResult): { nome: string } | null {
@@ -90,6 +130,49 @@ export function detetarBannerCookies(
   const cmp = detetarCMP(crawl);
   if (cmp) return { match: `plataforma de consentimento detetada (${cmp.nome})` };
   return null;
+}
+
+/**
+ * Procura os padrões apenas nos textos dos elementos CLICÁVEIS da página
+ * (botões, links, [role=button]) — case- e acento-insensitive. Devolve o padrão
+ * e o rótulo do elemento onde correspondeu, para evidência.
+ */
+export function encontrarPadraoClicavel(
+  crawl: CrawlResult,
+  patterns: string[]
+): { match: string; elemento: string } | null {
+  const textos = crawl.clickableTexts ?? [];
+  for (const p of patterns) {
+    const needle = semAcentos(p.toLowerCase());
+    const alvo = textos.find((t) => semAcentos(t).includes(needle));
+    if (alvo !== undefined) return { match: p, elemento: alvo };
+  }
+  return null;
+}
+
+/**
+ * A opção de REJEITAR cookies tem de ser uma AÇÃO (botão/link), não uma mera
+ * menção no texto: "Pode configurar ou recusar os cookies clicando em…" não é
+ * uma opção de rejeição — foi exatamente este falso "ok" que escondeu o banner
+ * sem rejeição do feelviana.com. Por isso procura-se só nos elementos
+ * clicáveis; a pesquisa antiga na página inteira fica apenas como fallback
+ * para crawls em que a extração de clicáveis falhou (lista vazia).
+ */
+export function encontrarRejeicaoCookies(
+  crawl: CrawlResult,
+  patterns: string[]
+): { match: string; elemento?: string } | null {
+  if (crawl.clickableTexts && crawl.clickableTexts.length > 0) {
+    const porRotulo = encontrarPadraoClicavel(crawl, patterns);
+    if (porRotulo) return porRotulo;
+    // Rótulo não reconhecido? A classe do botão de uma CMP conhecida é um
+    // sinal de rejeição independente da língua (ex.: cmplz-deny com o texto
+    // "Negar"). Evita falsos "sem opção de rejeitar" por rótulos fora da lista.
+    const porClasse = detetarBotaoRejeitarCMP(crawl);
+    if (porClasse) return { match: `botão de rejeitar da CMP ${porClasse.nome}` };
+    return null;
+  }
+  return encontrarPadrao(crawl, patterns);
 }
 
 /** Extrai um excerto curto à volta da primeira ocorrência, para evidência. */
