@@ -36,6 +36,7 @@ interface AutoOpts {
   incluirTodos: boolean;
   sync: boolean;
   pullLeads: boolean;
+  soAprovados: boolean;
 }
 
 /** Encontra o CSV de leads na pasta (ignora os ficheiros gerados com prefixo _). */
@@ -97,6 +98,7 @@ async function main() {
     .option("--incluir-todos", "envia mesmo para sites sem problemas sérios (ignora a regra de elegibilidade)", false)
     .option("--no-sync", "não sincroniza com a Google Sheet partilhada (por omissão sincroniza se o webhook estiver configurado)")
     .option("--no-pull-leads", "não puxa a folha de leads partilhada (por omissão puxa se LEADS_SHEET_ID estiver no .env)")
+    .option("--so-aprovados", "no envio, só envia os leads com 'Aprovado p/ envio' marcado na folha", false)
     .parse(process.argv);
   const opts = program.opts<AutoOpts>();
 
@@ -107,7 +109,7 @@ async function main() {
   // Assim tu/o cofundador adicionam leads na folha e o run apanha-os. Só corre
   // quando não é passado um --csv específico. Best-effort: se falhar, continua
   // com o leads.csv que já existir.
-  if (opts.pullLeads && !opts.csv) {
+  if (opts.pullLeads && !opts.csv && opts.audit) {
     try {
       const n = await pullLeadsSheet(path.join(dir, "leads.csv"));
       if (n !== null) console.log(`🔄 Folha de leads → leads.csv: ${n} lead(s) da Google Sheet.\n`);
@@ -204,6 +206,7 @@ async function main() {
   if (opts.limit) sendArgs.push("--limit", opts.limit);
   if (opts.strategy) sendArgs.push("--strategy", opts.strategy);
   if (opts.incluirTodos) sendArgs.push("--incluir-todos");
+  if (opts.soAprovados) sendArgs.push("--so-aprovados");
   const codigoSend = correr(TS_NODE, sendArgs);
 
   // 2b) Depois de enviar a sério, volta a sincronizar (sem ficheiros) só para

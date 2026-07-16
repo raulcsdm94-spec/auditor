@@ -32,6 +32,41 @@ interface SendOpts {
   limit?: string;
   strategy: string;
   incluirTodos: boolean;
+  soAprovados: boolean;
+}
+
+/** Normaliza um URL para o domínio (sem protocolo/www/caminho), para casar os
+ *  aprovados vindos da folha com os leads do resumo. */
+function dominioDeUrl(url: string): string {
+  return url
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/.*$/, "")
+    .replace(/^www\./i, "")
+    .toLowerCase();
+}
+
+/**
+ * Vai buscar à folha partilhada (via doGet do Apps Script) o conjunto de domínios
+ * com o checkbox "Aprovado p/ envio" marcado. Só precisa do SHEET_TRACKER_WEBHOOK_URL
+ * que já usamos para sincronizar — a folha não tem de ser pública. Lança se não
+ * conseguir obter a lista (para nunca enviar sem aprovação por engano).
+ */
+async function carregarAprovados(): Promise<Set<string>> {
+  const base = process.env.SHEET_TRACKER_WEBHOOK_URL;
+  if (!base) {
+    throw new Error(
+      "--so-aprovados precisa do SHEET_TRACKER_WEBHOOK_URL no .env (o mesmo do tracker)."
+    );
+  }
+  const url = base + (base.includes("?") ? "&" : "?") + "action=aprovados";
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) throw new Error(`A folha devolveu HTTP ${res.status} ao ler aprovados.`);
+  const corpo = (await res.json()) as { ok?: boolean; aprovados?: string[] };
+  if (!corpo || corpo.ok === false || !Array.isArray(corpo.aprovados)) {
+    throw new Error("Resposta inesperada da folha ao ler aprovados.");
+  }
+  return new Set(corpo.aprovados.map(dominioDeUrl).filter(Boolean));
 }
 
 interface SentLogEntry {
@@ -114,6 +149,7 @@ async function main() {
     .option("--limit <n>", "processa no máximo N leads elegíveis nesta corrida (útil para testar)")
     .option("--strategy <tipo>", "estratégia de email: 'classico' (com relatório) ou 'coldcall' (sem anexo)", "classico")
     .option("--incluir-todos", "envia mesmo para sites sem problemas sérios (ignora a regra de elegibilidade)", false)
+    .option("--so-aprovados", "só envia os leads com o checkbox 'Aprovado p/ envio' marcado na folha partilhada", false)
     .parse(process.argv);
   const opts = program.opts<SendOpts>();
 
@@ -156,6 +192,23 @@ async function main() {
     console.log(`🚫 Lista de supressão: ${supressao.tamanho} entrada(s) — nunca contactadas.\n`);
   }
 
+  // Aprovação na folha: só envia os leads que o humano marcou "Aprovado p/ envio".
+  let aprovados: Set<string> | null = null;
+  if (opts.soAprovados) {
+    try {
+      aprovados = await carregarAprovados();
+    } catch (e) {
+      console.error(`✖ ${(e as Error).message}`);
+      process.exitCode = 3;
+      return;
+    }
+    console.log(`✅ Aprovados na folha: ${aprovados.size} lead(s) marcados para envio.\n`);
+    if (aprovados.size === 0) {
+      console.log("Nenhum lead está aprovado na folha. Marca o checkbox 'Aprovado p/ envio' e volta a correr.");
+      return;
+    }
+  }
+
   const rows = parseCsv(fs.readFileSync(resumoPath, "utf-8"));
   const header = rows[0].map((h) => h.trim().toLowerCase());
   const col = (name: string) => header.indexOf(name);
@@ -183,6 +236,7 @@ async function main() {
   let saltadosCap = 0;
   let saltadosElegibilidade = 0;
   let saltadosSupressao = 0;
+  let saltadosNaoAprovado = 0;
   let processados = 0;
   let enviados = 0;
   let falhados = 0;
@@ -199,8 +253,15 @@ async function main() {
     const altos = iAltos >= 0 ? parseInt(row[iAltos] || "0", 10) || 0 : 0;
 
     if (estado !== "ok") continue;
-    // Elegibilidade: só contactamos sites com problemas sérios (ver outreach.ts).
-    if (!opts.incluirTodos && !valeAPenaContactar(criticos, altos)) {
+    // Aprovação (folha) tem prioridade: com --so-aprovados só envia os leads
+    // marcados, e a aprovação do humano dispensa a regra de elegibilidade
+    // automática. Sem aprovação, aplica a elegibilidade normal.
+    if (aprovados) {
+      if (!aprovados.has(dominioDeUrl(url))) {
+        saltadosNaoAprovado++;
+        continue;
+      }
+    } else if (!opts.incluirTodos && !valeAPenaContactar(criticos, altos)) {
       saltadosElegibilidade++;
       continue;
     }
@@ -298,6 +359,7 @@ async function main() {
     `\n${opts.send ? "Envio" : "Dry-run"} concluído: ${opts.send ? enviados + " enviados" : wouldSend.length + " enviaria(m)"}` +
       `${falhados ? `, ${falhados} falhado(s)` : ""}, ${jaEnviados} já enviados antes (saltados), ` +
       `${saltadosElegibilidade} saltados por elegibilidade (${MOTIVO_NAO_ELEGIVEL}), ` +
+      `${aprovados ? `${saltadosNaoAprovado} saltados por não aprovados na folha, ` : ""}` +
       `${saltadosSupressao} saltados por opt-out (lista de supressão), ` +
       `${saltadosCap} saltados por limite diário, ${semEmail} sem email, ${semFicheiros} sem PDF/email-outreach.`
   );

@@ -20,6 +20,25 @@ Publicar na Web) para o export CSV funcionar sem login.
 - Já-contactados e opt-outs continuam a ser saltados no envio (via `_sent-log.json` /
   `_supressao.txt`), por isso podes deixar leads antigos na folha sem risco de duplicar.
 
+## Aprovar e enviar a partir da folha
+
+Depois da dry-run, tu/o cofundador revêem cada linha e marcam o checkbox
+**"Aprovado p/ envio"** nos que aprovam. Depois envia-se só esses, **sem
+re-auditar** (usa os relatórios/emails já gerados):
+
+```
+# preview do que ia sair (dry-run):
+npm run enviar-aprovados
+# enviar a sério:
+npm run enviar-aprovados -- --send
+```
+
+`enviar-aprovados` = `automail --no-audit --strategy coldcall --so-aprovados`. Lê os
+aprovados da folha (via o mesmo webhook do tracker — a folha **não** precisa de ser
+pública), envia só esses, e depois sincroniza para virar **Email enviado → Sim**. A
+aprovação do humano dispensa a regra de elegibilidade automática; opt-out e
+já-enviados continuam a ser respeitados. Se nada estiver aprovado, não envia nada.
+
 ## Fluxo de trabalho
 
 1. `npm run automail --strategy coldcall` → audita + preview + **sincroniza a folha** (com ficheiros).

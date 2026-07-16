@@ -32,20 +32,44 @@ var HEADERS = [
   "Email",                   // 3  C
   "Assunto (cold-call)",     // 4  D
   "Email cold-call (texto)", // 5  E
-  "Email enviado",           // 6  F
-  "Data envio",              // 7  G
-  "Relatório cliente",       // 8  H
-  "Relatório completo",      // 9  I
-  "Screenshot",              // 10 J
-  "Notas",                   // 11 K
+  "Aprovado p/ envio",       // 6  F  (checkbox — só humanos editam; o sync nunca lhe toca)
+  "Email enviado",           // 7  G
+  "Data envio",              // 8  H
+  "Relatório cliente",       // 9  I
+  "Relatório completo",      // 10 J
+  "Screenshot",              // 11 K
+  "Notas",                   // 12 L
 ];
+
+// Coluna do checkbox de aprovação (1-based).
+var COL_APROVADO = 6;
 
 // Bump este marcador sempre que mudares o layout, para confirmar (via GET) que
 // o deployment está mesmo a servir o código novo.
-var VERSION = "cols11-2026-07-15";
+var VERSION = "cols12-aprovar-2026-07-15";
 
-function doGet() {
+function doGet(e) {
+  var action = e && e.parameter && e.parameter.action;
+  if (action === "aprovados") return json_(listarAprovados_());
   return json_({ ok: true, service: "veris-tracker", version: VERSION });
+}
+
+/** Devolve os URLs com o checkbox "Aprovado p/ envio" marcado. O web app corre
+ *  como o dono, por isso lê a folha sem a tornar pública. */
+function listarAprovados_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, aprovados: [] };
+  var n = sheet.getLastRow() - 1;
+  var urls = sheet.getRange(2, 2, n, 1).getValues(); // coluna B (URL)
+  var aprov = sheet.getRange(2, COL_APROVADO, n, 1).getValues();
+  var out = [];
+  for (var i = 0; i < n; i++) {
+    var v = aprov[i][0];
+    var marcado = v === true || String(v).toLowerCase() === "sim" || String(v).toLowerCase() === "true";
+    var u = String(urls[i][0]).trim();
+    if (marcado && u) out.push(u);
+  }
+  return { ok: true, aprovados: out };
 }
 
 function doPost(e) {
@@ -168,14 +192,21 @@ function upsertRow_(sheet, data, links) {
   set(3, data.email);
   set(4, data.assunto);
   set(5, data.emailTexto);
-  set(6, data.emailEnviado);
-  set(7, data.dataEnvio);
-  setLink(8, links.cliente, "Abrir PDF");
-  setLink(9, links.completo, "Abrir");
-  setLink(10, links.screenshot, "Ver");
-  set(11, data.notas);
+  // col 6 "Aprovado p/ envio" — NÃO tocar: é o checkbox que o humano marca.
+  set(7, data.emailEnviado);
+  set(8, data.dataEnvio);
+  setLink(9, links.cliente, "Abrir PDF");
+  setLink(10, links.completo, "Abrir");
+  setLink(11, links.screenshot, "Ver");
+  set(12, data.notas);
 
   sheet.getRange(rowIndex, 1, 1, lastCol).setValues([atual]);
+
+  // Garante um checkbox na célula de aprovação (sem alterar o valor já lá).
+  var celulaAprov = sheet.getRange(rowIndex, COL_APROVADO);
+  if (celulaAprov.getDataValidation() == null) {
+    celulaAprov.setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+  }
 }
 
 function isNum_(v) {
