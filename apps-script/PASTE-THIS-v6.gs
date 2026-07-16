@@ -44,7 +44,7 @@ var COL_APROVADO = 6;
 
 // Bump este marcador sempre que mudares o layout, para confirmar (via GET) que
 // o deployment está mesmo a servir o código novo.
-var VERSION = "safe-noclear-2026-07-16";
+var VERSION = "cols10-so-cliente-2026-07-16";
 
 function doGet(e) {
   var action = e && e.parameter && e.parameter.action;
@@ -103,10 +103,21 @@ function getSheet_() {
   var sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
 
-  // NUNCA limpar a folha automaticamente: as colunas "Notas" e "Aprovado p/
-  // envio" são escritas à mão e não se regeneram. Só escrevemos o cabeçalho
-  // quando a folha está vazia. Mudanças de colunas fazem-se de propósito, à mão.
-  if (sheet.getLastRow() === 0) {
+  // Migração automática: se o cabeçalho não corresponder ao layout atual (ex.
+  // colunas antigas), limpa tudo e reconstrói. O re-sync volta a preencher as
+  // linhas a partir do resumo, por isso fica uma folha limpa só com as colunas
+  // desejadas — sem apagar colunas à mão.
+  var precisaReset = sheet.getLastRow() === 0;
+  if (!precisaReset) {
+    var atualHeader = sheet.getRange(1, 1, 1, HEADERS.length).getValues()[0];
+    var larguraAntiga = sheet.getLastColumn() !== HEADERS.length;
+    for (var c = 0; c < HEADERS.length; c++) {
+      if (String(atualHeader[c]).trim() !== HEADERS[c]) { precisaReset = true; break; }
+    }
+    if (larguraAntiga) precisaReset = true;
+  }
+  if (precisaReset) {
+    sheet.clear();
     sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight("bold");
     sheet.setFrozenRows(1);
     sheet.setColumnWidth(5, 460); // "Email cold-call (texto)" mais larga para rever

@@ -27,7 +27,6 @@ interface SyncOpts {
   out: string;
   only?: string;
   files: boolean;
-  screenshot: boolean;
   dryRun: boolean;
   limit?: string;
 }
@@ -76,7 +75,7 @@ function dataPt(d: Date): string {
 }
 
 interface Ficheiro {
-  slot: "email" | "cliente" | "completo" | "screenshot";
+  slot: "email" | "cliente" | "completo";
   nome: string;
   mime: string;
   dataBase64: string;
@@ -111,7 +110,6 @@ async function main() {
     .option("--out <dir>", "pasta dos relatórios (onde está o _resumo-auditorias.csv)", "reports")
     .option("--only <texto>", "sincroniza só os leads cujo URL contém este texto")
     .option("--no-files", "não carrega ficheiros para o Drive (só atualiza o email enviado)")
-    .option("--no-screenshot", "carrega PDFs mas salta o screenshot (payload mais leve)")
     .option("--dry-run", "mostra o que seria sincronizado, sem enviar nada", false)
     .option("--limit <n>", "sincroniza no máximo N leads")
     .parse(process.argv);
@@ -146,7 +144,6 @@ async function main() {
   const iPdf = col("relatorio_cliente_pdf");
   // O email mostrado na folha é SEMPRE o cold-call — é o que o cofundador revê.
   const iEmailFile = col("email_coldcall");
-  const iErro = col("erro");
 
   const limit = opts.limit ? parseInt(opts.limit, 10) : Infinity;
   let ok = 0;
@@ -167,7 +164,6 @@ async function main() {
     const pasta = iPasta >= 0 ? (row[iPasta] || "").trim() : "";
     const emailFile = iEmailFile >= 0 ? (row[iEmailFile] || "").trim() : "";
     const pdf = iPdf >= 0 ? (row[iPdf] || "").trim() : "";
-    const erro = iErro >= 0 ? (row[iErro] || "").trim() : "";
 
     const id = idFicheiro(url);
     const enviado = log[id];
@@ -184,13 +180,11 @@ async function main() {
     if (opts.files) {
       // Rascunho do email cold-call que seria enviado — também vai para a pasta.
       anexar(ficheiros, "email", emailFile, "text/plain");
+      // Relatório do cliente — é o único com link na folha.
       anexar(ficheiros, "cliente", pdf, "application/pdf");
-      if (pasta) {
-        anexar(ficheiros, "completo", path.join(pasta, "relatorio.pdf"), "application/pdf");
-        if (opts.screenshot) {
-          anexar(ficheiros, "screenshot", path.join(pasta, "screenshot.png"), "image/png");
-        }
-      }
+      // Relatório interno completo → só para a pasta do Drive (sem link na
+      // folha); serve para consultar se o lead responder. Screenshot: não sobe.
+      if (pasta) anexar(ficheiros, "completo", path.join(pasta, "relatorio.pdf"), "application/pdf");
     }
 
     const dataAudit = pasta && fs.existsSync(pasta) ? dataPt(fs.statSync(pasta).mtime) : dataPt(new Date());
@@ -205,7 +199,9 @@ async function main() {
       emailTexto,
       emailEnviado: enviado ? "Sim" : "Não",
       dataEnvio: enviado ? dataPt(new Date(enviado.sentAt)) : "",
-      notas: erro ? `Erro: ${erro}` : "",
+      // NOTA: o sync NUNCA escreve a coluna "Notas" — é 100% humana. (Deixamos
+      // de enviar `notas` de propósito para nunca sobrepor o que lá meteste,
+      // nem sequer com texto de erro.)
       ficheiros,
     };
 

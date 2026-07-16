@@ -17,6 +17,9 @@ Publicar na Web) para o export CSV funcionar sem login.
 - ⚠️ O `leads.csv` local passa a ser um **espelho da folha** — é reescrito a cada run,
   por isso edita os leads **na folha**, não no ficheiro.
 - Puxar à mão (para testar): `npm run pull-leads`. Saltar o pull num run: `--no-pull-leads`.
+- Ficheiros por lead: sobem 3 para a pasta do Drive (rascunho do email, relatório do
+  cliente, relatório interno). Só o **relatório do cliente** tem link na folha; o
+  interno fica na pasta para consultar se houver resposta. Screenshot não sobe.
 - Já-contactados e opt-outs continuam a ser saltados no envio (via `_sent-log.json` /
   `_supressao.txt`), por isso podes deixar leads antigos na folha sem risco de duplicar.
 
