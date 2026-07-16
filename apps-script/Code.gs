@@ -39,17 +39,37 @@ var HEADERS = [
   "Notas",                   // 10 J
 ];
 
-// Coluna do checkbox de aprovação (1-based).
-var COL_APROVADO = 6;
+// Colunas (1-based) lidas pelos endpoints.
+var COL_APROVADO = 6; // checkbox "Aprovado p/ envio"
+var COL_ENVIADO = 7;  // "Email enviado" (Sim/Não)
 
 // Bump este marcador sempre que mudares o layout, para confirmar (via GET) que
 // o deployment está mesmo a servir o código novo.
-var VERSION = "safe-noclear-2026-07-16";
+var VERSION = "enviados-2026-07-16";
 
 function doGet(e) {
   var action = e && e.parameter && e.parameter.action;
   if (action === "aprovados") return json_(listarAprovados_());
+  if (action === "enviados") return json_(listarEnviados_());
   return json_({ ok: true, service: "veris-tracker", version: VERSION });
+}
+
+/** Devolve os URLs já marcados "Email enviado = Sim" na folha. Só LÊ a folha —
+ *  serve para o envio saltar quem já foi contactado a partir de QUALQUER
+ *  máquina (a folha é a fonte de verdade partilhada, não o log local). */
+function listarEnviados_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, enviados: [] };
+  var n = sheet.getLastRow() - 1;
+  var urls = sheet.getRange(2, 2, n, 1).getValues(); // coluna B (URL)
+  var env = sheet.getRange(2, COL_ENVIADO, n, 1).getValues();
+  var out = [];
+  for (var i = 0; i < n; i++) {
+    var v = String(env[i][0]).trim().toLowerCase();
+    var u = String(urls[i][0]).trim();
+    if ((v === "sim" || v === "true") && u) out.push(u);
+  }
+  return { ok: true, enviados: out };
 }
 
 /** Devolve os URLs com o checkbox "Aprovado p/ envio" marcado. O web app corre

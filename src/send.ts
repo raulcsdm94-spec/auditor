@@ -69,6 +69,25 @@ async function carregarAprovados(): Promise<Set<string>> {
   return new Set(corpo.aprovados.map(dominioDeUrl).filter(Boolean));
 }
 
+/**
+ * Lê da folha partilhada os domínios já marcados "Email enviado = Sim". É a
+ * fonte de verdade PARTILHADA (entre máquinas / cofundadores), ao contrário do
+ * `_sent-log.json` local. O envio salta estes para nunca reenviar, mesmo que
+ * quem envia agora seja outra pessoa/máquina que nunca contactou o lead.
+ */
+async function carregarEnviadosFolha(): Promise<Set<string>> {
+  const base = process.env.SHEET_TRACKER_WEBHOOK_URL;
+  if (!base) return new Set();
+  const url = base + (base.includes("?") ? "&" : "?") + "action=enviados";
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) throw new Error(`A folha devolveu HTTP ${res.status} ao ler enviados.`);
+  const corpo = (await res.json()) as { ok?: boolean; enviados?: string[] };
+  if (!corpo || corpo.ok === false || !Array.isArray(corpo.enviados)) {
+    throw new Error("Resposta inesperada da folha ao ler enviados.");
+  }
+  return new Set(corpo.enviados.map(dominioDeUrl).filter(Boolean));
+}
+
 interface SentLogEntry {
   url: string;
   email: string;
@@ -209,6 +228,24 @@ async function main() {
     }
   }
 
+  // Dedup PARTILHADO: lê da folha quem já está "Email enviado = Sim" e salta-os,
+  // para nunca reenviar mesmo a partir de outra máquina (o _sent-log.json é
+  // local; a folha é a fonte de verdade partilhada). Só quando há webhook.
+  let enviadosFolha = new Set<string>();
+  if (opts.send && process.env.SHEET_TRACKER_WEBHOOK_URL) {
+    try {
+      enviadosFolha = await carregarEnviadosFolha();
+      if (enviadosFolha.size > 0) {
+        console.log(`📤 Já enviados (folha partilhada): ${enviadosFolha.size} — serão saltados.\n`);
+      }
+    } catch (e) {
+      console.error(
+        `⚠️  Não consegui ler os já-enviados da folha (${(e as Error).message}). ` +
+          "Uso só o log local — cuidado com reenvios entre máquinas."
+      );
+    }
+  }
+
   const rows = parseCsv(fs.readFileSync(resumoPath, "utf-8"));
   const header = rows[0].map((h) => h.trim().toLowerCase());
   const col = (name: string) => header.indexOf(name);
@@ -263,6 +300,11 @@ async function main() {
       }
     } else if (!opts.incluirTodos && !valeAPenaContactar(criticos, altos)) {
       saltadosElegibilidade++;
+      continue;
+    }
+    // Já enviado segundo a folha partilhada (qualquer máquina) → nunca reenviar.
+    if (enviadosFolha.has(dominioDeUrl(url))) {
+      jaEnviados++;
       continue;
     }
     if (!email) {
