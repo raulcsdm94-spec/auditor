@@ -82,6 +82,15 @@ export interface DetectedForm {
   hasPasswordField: boolean;
 }
 
+/** Conteúdo individual de uma página visitada durante o crawl. */
+export interface PaginaCapturada {
+  url: string;
+  /** <title> da página (pode ser vazio). */
+  titulo: string;
+  /** Texto visível da página (lowercase). */
+  visibleText: string;
+}
+
 /** Tudo o que o crawler recolhe e entrega aos checks. */
 export interface CrawlResult {
   /** URL pedido pelo utilizador. */
@@ -104,6 +113,13 @@ export interface CrawlResult {
   pathProbes: PathProbe[];
   /** Páginas efetivamente carregadas (a principal + subpáginas seguidas). */
   paginasVisitadas: string[];
+  /**
+   * Conteúdo POR PÁGINA (a principal + cada subpágina), para os checks que
+   * precisam de analisar uma página específica — ex.: avaliar a qualidade do
+   * texto da Política de Cookies, ou ver se a Política de Privacidade cobre
+   * cookies — em vez de procurar no blob concatenado de todas as páginas.
+   */
+  paginas?: PaginaCapturada[];
   /** O site processa pagamento online no próprio site (gateway/campos de cartão)? */
   processaPagamento: boolean;
   /** Foi alcançada uma página de checkout/pagamento durante o crawl? */
@@ -112,6 +128,14 @@ export interface CrawlResult {
   dns: DnsInfo;
   /** Métricas de acessibilidade da página principal. */
   a11y: A11yInfo;
+  /**
+   * Textos (lowercase, curtos) dos elementos CLICÁVEIS da página principal:
+   * botões, links, [role=button] e inputs de submissão, incluindo iframes e
+   * shadow DOM abertos. Servem para distinguir uma AÇÃO real (ex.: botão
+   * "Rejeitar" num banner de cookies) de uma mera menção no texto corrido
+   * (ex.: "pode recusar os cookies clicando em…"), que não é uma opção real.
+   */
+  clickableTexts?: string[];
   screenshotPath?: string;
   /**
    * Preenchido quando o crawl foi barrado por uma página de desafio/anti-bot

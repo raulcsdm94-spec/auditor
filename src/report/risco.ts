@@ -35,6 +35,8 @@ const RISCO_POR_ID: Record<string, string> = {
     "Sem Política de Privacidade, o site fica exposto a coimas do regulador (CNPD) e à perda de confiança dos visitantes.",
   "legal.politica-cookies.missing":
     "Sem Política de Cookies, os visitantes não sabem que dados são recolhidos, violando os deveres de transparência da Lei n.º 41/2004 (art. 5.º) e do RGPD.",
+  "legal.politica-cookies.incompleta":
+    "Uma Política de Cookies incompleta ou desatualizada não cumpre os deveres de transparência da Lei n.º 41/2004 (art. 5.º) e do RGPD (arts. 12.º e 13.º): a informação tem de descrever que cookies são usados, para quê, por quanto tempo e como recusá-los.",
   "legal.livro-reclamacoes.missing":
     "Para prestadores de serviços, a ausência do Livro de Reclamações Eletrónico é uma infração ao DL n.º 156/2005 (alterado pelo DL n.º 74/2017), sujeita a coima de 150€ a 15.000€.",
   "legal.info-empresa.sem-id-fiscal":

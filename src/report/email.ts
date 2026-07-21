@@ -9,6 +9,23 @@ import { MAX_PONTOS_COLDCALL } from "./outreach";
  * Duas estratégias: clássica (com relatório) ou cold call (sem anexos).
  */
 
+const SITE = "www.verisaudit.com";
+
+/**
+ * Link da página de boas-vindas com um código único por lead (?r=<domínio>),
+ * para sabermos QUEM abriu a página quando clicam no link do email.
+ */
+function linkWelcome(crawl: CrawlResult): string {
+  let code = "";
+  try {
+    code = new URL(crawl.requestedUrl).hostname.replace(/^www\./, "");
+  } catch {
+    code = "";
+  }
+  const q = code ? `?r=${encodeURIComponent(code)}` : "";
+  return `${SITE}/pt/welcome${q}`;
+}
+
 /**
  * Ordena achados por impacto. A SEVERIDADE manda sempre: um problema crítico
  * aparece antes de qualquer grave, e um grave antes de qualquer médio — para o
@@ -56,7 +73,38 @@ function pontosColdCall(findings: Finding[]): Finding[] {
   const base = serios.length
     ? serios
     : ordenarPorImpacto(findings.filter((f) => f.severidade === "medio"));
-  return base.slice(0, MAX_PONTOS_COLDCALL);
+  return diversificarPorFamilia(base, MAX_PONTOS_COLDCALL);
+}
+
+/**
+ * Escolhe até `max` pontos VARIADOS: primeiro o melhor de cada família de
+ * checks (ex. "sec.cookies", "legal.banner-cookies"), e só depois segundos da
+ * mesma família se sobrarem vagas. Evita emails em que os 4 pontos são o mesmo
+ * problema repetido (caso casadoavohoracio.pt: 4× cookies com flags fracas),
+ * que parecem gerados automaticamente e perdem credibilidade.
+ */
+function diversificarPorFamilia(ordenados: Finding[], max: number): Finding[] {
+  const porFamilia = new Map<string, Finding[]>();
+  for (const f of ordenados) {
+    const fam = f.id.split(".").slice(0, 2).join(".");
+    const lista = porFamilia.get(fam);
+    if (lista) lista.push(f);
+    else porFamilia.set(fam, [f]);
+  }
+  const escolhidos: Finding[] = [];
+  for (let ronda = 0; escolhidos.length < max; ronda++) {
+    let acrescentou = false;
+    for (const lista of porFamilia.values()) {
+      const f = lista[ronda];
+      if (!f) continue;
+      escolhidos.push(f);
+      acrescentou = true;
+      if (escolhidos.length >= max) break;
+    }
+    if (!acrescentou) break;
+  }
+  // Reordenar por impacto para o email continuar a liderar com o mais grave.
+  return ordenarPorImpacto(escolhidos);
 }
 
 /** Rótulo curto por severidade, prefixado a cada ponto (dá também a cor do "ball" no HTML). */
@@ -206,7 +254,7 @@ export function gerarEmailOutreach(crawl: CrawlResult, findings: Finding[]): str
     "",
     "Se fizer sentido, estou disponível para uma chamada a explicar o que encontramos e como resolver. Basta responder a este email.",
     "",
-    "Se preferir, preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: www.verisaudit.com/pt/welcome",
+    `Se preferir, preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: ${linkWelcome(crawl)}`,
     "",
     "Com os melhores cumprimentos,",
   ].join("\n");
@@ -236,11 +284,9 @@ export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding
   const corpo = [
     "Boa tarde,",
     "",
-    "O meu nome é Raul Dantas e sou analista de segurança da VERIS.",
+    "O meu nome é Raul Dantas sou analista de segurança da VERIS.",
     "",
-    `Esta semana estivemos a analisar alguns websites de negócios na sua região e o ${url} foi um deles.`,
-    "",
-    "Durante essa auditoria identificámos alguns pontos que consideramos relevantes e que poderão merecer atenção:",
+    `Estivemos a analisar o seu website ${url} e identificámos alguns pontos que consideramos relevantes e que poderão merecer atenção:`,
     "",
     pontos,
     "",
@@ -248,7 +294,7 @@ export function gerarEmailOutreachColdCall(crawl: CrawlResult, findings: Finding
     "",
     "Se pretender receber a versão completa desta auditoria, com todos os pontos identificados e respetivas recomendações, basta responder a este email. Teremos todo o gosto em enviá-la, sem qualquer compromisso.",
     "",
-    "A VERIS é uma empresa especializada em auditoria técnica de websites, segurança informática, conformidade RGPD e análise de desempenho. Preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: www.verisaudit.com/pt/welcome",
+    `A VERIS é uma empresa especializada em auditoria técnica de websites, segurança informática, conformidade RGPD e análise de desempenho. Preparámos uma página que explica exatamente o que fizemos e o que pode fazer a seguir: ${linkWelcome(crawl)}`,
     "",
     "Com os melhores cumprimentos,",
   ].join("\n");

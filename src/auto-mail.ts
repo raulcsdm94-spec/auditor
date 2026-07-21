@@ -4,6 +4,8 @@ import * as path from "path";
 import { spawnSync } from "child_process";
 import { Command } from "commander";
 import { lerCsv } from "./inputs";
+import { loadEnv } from "./env";
+import { pullLeadsSheet } from "./leads-sheet";
 
 /**
  * Pipeline "uma pasta, um comando": lê o CSV (websites,emails) que está na
@@ -32,6 +34,9 @@ interface AutoOpts {
   limit?: string;
   strategy?: string;
   incluirTodos: boolean;
+  sync: boolean;
+  pullLeads: boolean;
+  soAprovados: boolean;
 }
 
 /** Encontra o CSV de leads na pasta (ignora os ficheiros gerados com prefixo _). */
@@ -55,7 +60,25 @@ function correr(bin: string, args: string[]): number {
   return r.status ?? 1;
 }
 
-function main() {
+/**
+ * Espelha o resumo na Google Sheet partilhada (best-effort: um erro aqui nunca
+ * faz o pipeline falhar). `comFicheiros=false` no sync pós-envio, que só precisa
+ * de virar o "Email enviado" (os ficheiros já subiram na fase de auditoria).
+ */
+function sincronizar(reportsDir: string, comFicheiros: boolean): void {
+  const syncArgs = [
+    path.join(AUDITOR_DIR, "src", "sync-sheet.ts"),
+    "--out", reportsDir,
+  ];
+  if (!comFicheiros) syncArgs.push("--no-files");
+  const codigo = correr(TS_NODE, syncArgs);
+  if (codigo !== 0) {
+    console.error("⚠️  A sincronização com a Google Sheet falhou (o resumo local está na mesma). Continuo.");
+  }
+}
+
+async function main() {
+  loadEnv();
   const program = new Command();
   program
     .name("veris-automail")
@@ -73,11 +96,27 @@ function main() {
     .option("--limit <n>", "processa no máximo N leads (auditoria e envio)")
     .option("--strategy <tipo>", "estratégia de email: 'classico' (com relatório) ou 'coldcall' (sem anexo)")
     .option("--incluir-todos", "envia mesmo para sites sem problemas sérios (ignora a regra de elegibilidade)", false)
+    .option("--no-sync", "não sincroniza com a Google Sheet partilhada (por omissão sincroniza se o webhook estiver configurado)")
+    .option("--no-pull-leads", "não puxa a folha de leads partilhada (por omissão puxa se LEADS_SHEET_ID estiver no .env)")
+    .option("--so-aprovados", "no envio, só envia os leads com 'Aprovado p/ envio' marcado na folha", false)
     .parse(process.argv);
   const opts = program.opts<AutoOpts>();
 
   const dir = path.resolve(process.cwd(), opts.dir);
   fs.mkdirSync(dir, { recursive: true });
+
+  // 0) Puxa a folha de leads partilhada → leads.csv (se LEADS_SHEET_ID no .env).
+  // Assim tu/o cofundador adicionam leads na folha e o run apanha-os. Só corre
+  // quando não é passado um --csv específico. Best-effort: se falhar, continua
+  // com o leads.csv que já existir.
+  if (opts.pullLeads && !opts.csv && opts.audit) {
+    try {
+      const n = await pullLeadsSheet(path.join(dir, "leads.csv"));
+      if (n !== null) console.log(`🔄 Folha de leads → leads.csv: ${n} lead(s) da Google Sheet.\n`);
+    } catch (e) {
+      console.error(`⚠️  Não consegui puxar a folha de leads (${(e as Error).message}). Uso o leads.csv local.\n`);
+    }
+  }
 
   let csv = opts.csv ? path.resolve(process.cwd(), opts.csv) : null;
   if (!csv) {
@@ -150,6 +189,13 @@ function main() {
     console.log("(--no-audit) A saltar a auditoria, uso os relatórios já existentes.\n");
   }
 
+  // 1b) Sincroniza o resumo (com ficheiros) para a Google Sheet partilhada,
+  // para o cofundador poder rever os emails antes do envio.
+  if (opts.sync) {
+    console.log("\n═══ Sincronização com a folha partilhada ═══\n");
+    sincronizar(reportsDir, true);
+  }
+
   // 2) Envio (dry-run por omissão; só envia mesmo com --send).
   console.log(`\n═══ 2/2 · Envio ${opts.send ? "(A SÉRIO)" : "(preview / dry-run)"} ═══\n`);
   const sendArgs = [path.join(AUDITOR_DIR, "src", "send.ts"), "--out", reportsDir];
@@ -160,8 +206,20 @@ function main() {
   if (opts.limit) sendArgs.push("--limit", opts.limit);
   if (opts.strategy) sendArgs.push("--strategy", opts.strategy);
   if (opts.incluirTodos) sendArgs.push("--incluir-todos");
+  if (opts.soAprovados) sendArgs.push("--so-aprovados");
   const codigoSend = correr(TS_NODE, sendArgs);
+
+  // 2b) Depois de enviar a sério, volta a sincronizar (sem ficheiros) só para
+  // virar o "Email enviado" → Sim na folha partilhada.
+  if (opts.sync && opts.send && codigoSend === 0) {
+    console.log("\n═══ Atualização do estado de envio na folha partilhada ═══\n");
+    sincronizar(reportsDir, false);
+  }
+
   process.exitCode = codigoSend;
 }
 
-main();
+main().catch((e) => {
+  console.error(`✖ Erro inesperado: ${(e as Error).message}`);
+  process.exitCode = 1;
+});

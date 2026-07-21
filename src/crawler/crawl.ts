@@ -12,6 +12,7 @@ import {
   TlsInfo,
   DnsInfo,
   A11yInfo,
+  PaginaCapturada,
 } from "../types";
 
 /**
@@ -201,6 +202,7 @@ export async function crawl(opts: CrawlOptions): Promise<CrawlResult> {
 
     const forms: DetectedForm[] = await extractForms(page);
     const a11y = await extractA11y(page);
+    const clickableTexts = await extractClickableTexts(page, warnings);
 
     // ---- Screenshot (da página principal, antes de navegar para subpáginas) ----
     let screenshotPath: string | undefined;
@@ -218,6 +220,9 @@ export async function crawl(opts: CrawlOptions): Promise<CrawlResult> {
     // ---- Subpáginas relevantes (políticas, contacto, login, checkout…) ----
     // Mantém o crawl passivo, só segue links internos já presentes na página.
     const paginasVisitadas = [finalUrl];
+    const paginas: PaginaCapturada[] = [
+      { url: finalUrl, titulo: pageTitle, visibleText },
+    ];
     const maxPages = opts.maxPages ?? 5;
     if (maxPages > 1) {
       const candidatos = await extrairLinksInternos(page, finalUrl, maxPages - 1);
@@ -225,13 +230,48 @@ export async function crawl(opts: CrawlOptions): Promise<CrawlResult> {
         try {
           await page.goto(link, { waitUntil: "domcontentloaded", timeout });
           await page.waitForTimeout(1200).catch(() => {});
+          const textoPagina = (
+            await page.evaluate(() => document.body?.innerText || "")
+          ).toLowerCase();
           html += `\n\n<!-- ${link} -->\n` + (await page.content());
-          visibleText +=
-            "\n" + (await page.evaluate(() => document.body?.innerText || "")).toLowerCase();
+          visibleText += "\n" + textoPagina;
           forms.push(...(await extractForms(page)));
           paginasVisitadas.push(page.url());
+          paginas.push({
+            url: page.url(),
+            titulo: await page.title().catch(() => ""),
+            visibleText: textoPagina,
+          });
         } catch (e) {
           warnings.push(`Falha ao visitar ${link}: ${(e as Error).message}`);
+        }
+      }
+    }
+
+    // ---- Segunda passagem: páginas de políticas ainda não visitadas ----
+    // A Política de Cookies muitas vezes só está ligada a partir do rodapé de
+    // OUTRA subpágina (ex.: da própria Política de Privacidade), pelo que não
+    // aparece nos links da página principal. Vamos buscá-la também: os checks
+    // legais analisam o CONTEÚDO destas páginas (qualidade, cobertura).
+    if ((opts.maxPages ?? 5) > 1) {
+      const extra = extrairLinksPolitica(html, finalUrl, paginasVisitadas).slice(0, 2);
+      for (const link of extra) {
+        try {
+          await page.goto(link, { waitUntil: "domcontentloaded", timeout });
+          await page.waitForTimeout(800).catch(() => {});
+          const textoPagina = (
+            await page.evaluate(() => document.body?.innerText || "")
+          ).toLowerCase();
+          html += `\n\n<!-- ${link} -->\n` + (await page.content());
+          visibleText += "\n" + textoPagina;
+          paginasVisitadas.push(page.url());
+          paginas.push({
+            url: page.url(),
+            titulo: await page.title().catch(() => ""),
+            visibleText: textoPagina,
+          });
+        } catch (e) {
+          warnings.push(`Falha ao visitar política ${link}: ${(e as Error).message}`);
         }
       }
     }
@@ -289,10 +329,12 @@ export async function crawl(opts: CrawlOptions): Promise<CrawlResult> {
       forms,
       pathProbes,
       paginasVisitadas,
+      paginas,
       processaPagamento,
       checkoutAlcancado,
       dns,
       a11y,
+      clickableTexts,
       screenshotPath,
       warnings,
     };
@@ -437,6 +479,57 @@ async function probePaths(
   return results;
 }
 
+/**
+ * Recolhe os textos dos elementos clicáveis (botões, links, [role=button],
+ * inputs de submissão) da página principal — em TODOS os frames e atravessando
+ * shadow DOM abertos (várias CMPs, como a Usercentrics, montam o banner num
+ * shadow root, invisível a um querySelectorAll normal). É corrido DEPOIS da
+ * espera pós-load, quando o banner de cookies já está renderizado.
+ *
+ * Isto permite ao check do banner distinguir um botão "Rejeitar" real de uma
+ * simples menção no texto ("pode recusar os cookies…"), que não é uma opção.
+ */
+async function extractClickableTexts(
+  page: import("playwright").Page,
+  warnings: string[]
+): Promise<string[]> {
+  const todos = new Set<string>();
+  for (const frame of page.frames()) {
+    try {
+      const textos = await frame.evaluate(() => {
+        const out: string[] = [];
+        const SELETOR =
+          'button, a[href], [role="button"], input[type="button"], input[type="submit"]';
+        const recolher = (root: Document | ShadowRoot) => {
+          for (const el of Array.from(root.querySelectorAll(SELETOR))) {
+            const valor =
+              el instanceof HTMLInputElement ? el.value : (el as HTMLElement).innerText || "";
+            const texto = (valor || el.getAttribute("aria-label") || "")
+              .replace(/\s+/g, " ")
+              .trim()
+              .toLowerCase();
+            // Só rótulos curtos: um botão/link de ação tem poucas palavras; um
+            // parágrafo inteiro dentro de um <a> não é um rótulo de ação.
+            if (texto && texto.length <= 80) out.push(texto);
+          }
+          for (const el of Array.from(root.querySelectorAll("*"))) {
+            if (el.shadowRoot) recolher(el.shadowRoot);
+          }
+        };
+        recolher(document);
+        return out;
+      });
+      for (const t of textos) todos.add(t);
+    } catch {
+      /* frame cross-origin inacessível ou destruído; ignorar */
+    }
+  }
+  if (todos.size === 0) {
+    warnings.push("Nenhum elemento clicável extraído (página vazia ou falha de leitura).");
+  }
+  return Array.from(todos);
+}
+
 /** Recolhe métricas de acessibilidade do DOM da página principal. */
 async function extractA11y(page: import("playwright").Page): Promise<A11yInfo> {
   try {
@@ -522,8 +615,12 @@ async function extrairLinksInternos(
   try {
     const links = await page.evaluate((base: string) => {
       const origin = new URL(base).origin;
+      // Páginas de políticas (cookies/privacidade) têm prioridade máxima: os
+      // checks legais analisam o CONTEÚDO dessas páginas, por isso têm de
+      // caber no orçamento de subpáginas antes de contactos/login/etc.
+      const KW_PRIORITARIAS = ["cookie", "privac", "rgpd", "dados-pessoais"];
       const KW = [
-        "privac", "cookie", "termo", "term", "legal", "contact", "contato", "contacto",
+        "termo", "term", "legal", "contact", "contato", "contacto",
         "sobre", "about", "reclama", "politic", "policy", "conta", "login", "entrar",
         "checkout", "carrinho", "cart", "reserva", "book", "devolu", "reembol", "refund",
       ];
@@ -544,7 +641,11 @@ async function extrairLinksInternos(
         if (href === base || vistos.has(href)) continue;
         vistos.add(href);
         const hay = (u.pathname + " " + (a.textContent || "")).toLowerCase();
-        const score = KW.some((k) => hay.includes(k)) ? 1 : 0;
+        const score = KW_PRIORITARIAS.some((k) => hay.includes(k))
+          ? 2
+          : KW.some((k) => hay.includes(k))
+          ? 1
+          : 0;
         out.push({ href, score });
       }
       out.sort((a, b) => b.score - a.score);
@@ -554,6 +655,49 @@ async function extrairLinksInternos(
   } catch {
     return [];
   }
+}
+
+/**
+ * Extrai do HTML acumulado os hrefs de páginas de política (cookies,
+ * privacidade, RGPD) da mesma origem que ainda não foram visitadas.
+ */
+function extrairLinksPolitica(html: string, base: string, visitadas: string[]): string[] {
+  let hostBase: string;
+  try {
+    hostBase = new URL(base).hostname.replace(/^www\./i, "");
+  } catch {
+    return [];
+  }
+  const normaliza = (u: string) => u.replace(/#.*$/, "").replace(/\/+$/, "").toLowerCase();
+  const vistos = new Set(visitadas.map(normaliza));
+  const out: string[] = [];
+  const re = /href=["']([^"']+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    const raw = m[1];
+    if (!/cooki|privac|gdpr|rgpd/i.test(raw)) continue;
+    // Excluir recursos (CSS/JS/imagens…) e diretórios de assets: um
+    // "cookieblocker.min.css" de um plugin NÃO é uma página de política.
+    if (/\.(css|js|mjs|json|png|jpe?g|svg|gif|webp|ico|woff2?|xml|txt|pdf)(\?|$)/i.test(raw))
+      continue;
+    if (/wp-content|wp-includes|\/assets?\/|\/static\/|\/cdn-cgi\//i.test(raw)) continue;
+    let u: URL;
+    try {
+      u = new URL(raw, base);
+    } catch {
+      continue;
+    }
+    // Mesmo domínio, tolerando www./apex (ex.: site em www.exemplo.pt com a
+    // política ligada como exemplo.pt/cookies/).
+    if (u.hostname.replace(/^www\./i, "") !== hostBase) continue;
+    if (u.protocol !== "http:" && u.protocol !== "https:") continue;
+    u.hash = "";
+    const chave = normaliza(u.href);
+    if (!chave || vistos.has(chave)) continue;
+    vistos.add(chave);
+    out.push(u.href);
+  }
+  return out;
 }
 
 /** Hostname seguro a partir de um URL (sem lançar). */
